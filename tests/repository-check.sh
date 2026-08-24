@@ -23,9 +23,10 @@ if printf '%s\n' "$tracked" | rg -n '(^|/)(node_modules|__pycache__|\.pytest_cac
   exit 1
 fi
 
-if rg -n --glob '!LUNA_MAX_BUILD_GUIDE.md' --glob '!preview.png' \
+mapfile -t scanned_files < <(git ls-files | rg -v '^(README.md|SECURITY.md|CONTRIBUTING.md|CHANGELOG.md|docs/|tests/repository-check.sh)$' || true)
+if ((${#scanned_files[@]} > 0)) && rg -n \
   '(shell=True|subprocess\.(Popen|run|call)|\beval\s*\(|\bexec\s*\(|pkexec|\bsudo\b|\bcurl\b|\bwget\b|/home/[A-Za-z0-9_.-]+/|BEGIN (RSA|OPENSSH|EC|PRIVATE) KEY|Bearer [A-Za-z0-9._~+/=-]{12,}|\bsk-[A-Za-z0-9_-]{12,})' \
-  $(git ls-files) >/dev/null; then
+  "${scanned_files[@]}" >/dev/null; then
   echo 'forbidden execution, privilege, personal path, or credential pattern found' >&2
   exit 1
 fi

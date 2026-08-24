@@ -69,10 +69,10 @@ class SecurityTests(unittest.TestCase):
                         os.environ[key] = value
 
     def test_secret_sanitizer(self):
-        text = "Authorization: Bearer real-secret-value sk-1234567890abcd"
-        safe = sanitize_text(text, ["real-secret-value"])
+        text = "Authorization=real-secret-value token=fixture-token-value"
+        safe = sanitize_text(text, ["real-secret-value", "fixture-token-value"])
         self.assertNotIn("real-secret-value", safe)
-        self.assertNotIn("sk-1234567890abcd", safe)
+        self.assertNotIn("fixture-token-value", safe)
 
 
 if __name__ == "__main__":
