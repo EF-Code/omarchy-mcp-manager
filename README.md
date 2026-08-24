@@ -40,7 +40,8 @@ omarchy plugin enable io.github.ef-code.mcp-manager right
 
 The first scan is read-only. Click the bar icon to open the anchored panel. The
 right mouse button refreshes discovery. Use `h`/`l` for agents, `j`/`k` for
-items, `/` for search, `r` to refresh, `?` for help, and Escape to close.
+servers, `[`/`]` for sources, `/` for search, `r` to refresh, `?` for help,
+and Escape to close.
 
 ## Editing, imports, and recovery
 
@@ -83,8 +84,9 @@ locations. Backups should be retained if they may be needed for recovery.
 
 ## Development and evidence
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and
-[CHANGELOG.md](CHANGELOG.md). Static validation, automated tests, live local
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
+[SECURITY_AUDIT.md](SECURITY_AUDIT.md), and [CHANGELOG.md](CHANGELOG.md).
+Static validation, automated tests, live local
 Omarchy interaction, and externally verified compatibility are separate
 evidence levels; this repository does not claim more than it has tested.
 

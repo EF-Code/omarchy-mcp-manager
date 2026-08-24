@@ -45,3 +45,5 @@ real endpoints to fixtures or screenshots.
 Read [SECURITY.md](SECURITY.md) before changing path handling, redaction,
 imports, transactions, or QML/helper communication. The plugin runs
 unsandboxed inside `omarchy-shell`; least privilege is part of the feature.
+Review [SECURITY_AUDIT.md](SECURITY_AUDIT.md) when changing a previously
+audited boundary, and update its evidence only after rerunning the full suite.

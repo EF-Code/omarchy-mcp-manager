@@ -29,6 +29,11 @@ the report; use synthetic placeholders.
 - Writes require an explicit redacted preview, confirmation, a matching
   source fingerprint, an owner-only lock, an atomic replacement, and readback
   verification.
+- Locks are keyed by the backend-resolved canonical source path. Source reads,
+  temporary creation, replacement, and verification are anchored to an open
+  directory descriptor to detect path swaps.
+- Backups and redacted history are owner-only and bounded. Restore is itself a
+  fingerprint-bound previewed mutation rather than a direct write.
 - Symlinks, unsafe ownership, system paths, virtual files, oversized inputs,
   ambiguous duplicate keys, and external drift fail closed.
 
@@ -39,3 +44,5 @@ MCP command may still be unavailable, misconfigured, or unsafe to trust. The
 plugin does not provide a sandbox for the agents it inspects. Imported files
 default to read-only and manage-in-place requires explicit authorization for
 the exact file.
+
+The current repository audit record is in [SECURITY_AUDIT.md](SECURITY_AUDIT.md).
