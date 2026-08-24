@@ -6,7 +6,7 @@ import re
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 from typing import Any
 
-from .model import MAX_ENTRIES, MAX_STRING, bounded
+from .model import MAX_ENTRIES, MAX_STRING, bounded, stable_id, valid_name
 from .paths import is_environment_reference
 
 SECRET_KEY = re.compile(
@@ -37,7 +37,7 @@ def redacted_value(value: object, key: object = "") -> object:
     if state:
         return {"state": state, "value": None}
     if isinstance(value, str):
-        return bounded(value)
+        return bounded(sanitize_text(value))
     if isinstance(value, (int, float, bool)) or value is None:
         return value
     return sanitize_object(value)
@@ -50,44 +50,58 @@ def redact_url(value: object) -> dict[str, object] | str | None:
     try:
         parsed = urlsplit(raw)
         if not parsed.scheme or not parsed.netloc:
-            return bounded(raw)
+            display = raw.split("?", 1)[0].split("#", 1)[0]
+            return {
+                "display": bounded(sanitize_text(display)),
+                "state": "set" if parsed.query or parsed.fragment else "malformed",
+            }
         host = parsed.hostname or ""
         if parsed.port:
             host += f":{parsed.port}"
         query = parse_qsl(parsed.query, keep_blank_values=True)
-        redacted_query = "&".join(f"{name}=<redacted>" for name, _ in query)
-        safe = urlunsplit((parsed.scheme, host, parsed.path, redacted_query, ""))
+        redacted_query = "redacted-query" if parsed.query else ""
+        safe_path = SECRET_VALUE.sub("<secret-hidden>", parsed.path)
+        safe = urlunsplit((parsed.scheme, host, safe_path, redacted_query, ""))
         result: dict[str, object] = {"display": bounded(safe), "state": "set" if parsed.username or parsed.password or query else "clear"}
         if query:
-            result["queryNames"] = [bounded(name, 128) for name, _ in query[:MAX_ENTRIES]]
+            result["queryCount"] = min(len(query), MAX_ENTRIES)
         return result
     except (ValueError, UnicodeError):
         return {"display": "[hidden]", "state": "malformed"}
 
 
 def redact_command(command: object, args: object) -> tuple[str | None, list[str]]:
-    safe_command = bounded(command) if command is not None else None
+    safe_command = bounded(sanitize_text(command)) if command is not None else None
+    if safe_command and (SECRET_VALUE.search(safe_command) or "<secret hidden>" in safe_command):
+        safe_command = "<secret hidden>"
     safe_args: list[str] = []
     values = args if isinstance(args, list) else []
     secret_next = False
     for item in values[:MAX_ENTRIES]:
         text = bounded(item)
-        if secret_next or SECRET_VALUE.search(text):
+        sanitized = sanitize_text(text)
+        if secret_next or SECRET_VALUE.search(text) or sanitized != text:
             safe_args.append("<secret hidden>")
             secret_next = False
             continue
         if text.startswith("-") and secret_key(text.lstrip("-")):
-            safe_args.append(text)
-            secret_next = True
+            separator = "=" if "=" in text else ":" if ":" in text else ""
+            if separator:
+                flag = text.split(separator, 1)[0]
+                safe_args.append(flag + separator + "<secret hidden>")
+                secret_next = False
+            else:
+                safe_args.append(text)
+                secret_next = True
             continue
         safe_args.append(text)
     return safe_command, safe_args
 
 
 def redact_env(name_value: object, raw_value: object = None) -> dict[str, object]:
-    name = bounded(name_value, 256)
+    name = bounded(sanitize_text(name_value), 256)
     ref = is_environment_reference(raw_value)
-    return {"name": name, "state": "environment-reference" if ref else "set", "value": None}
+    return {"name": name, "reference": bounded(ref, 256) if ref else None, "state": "environment-reference" if ref else "set", "value": None}
 
 
 def redact_headers(value: object) -> list[dict[str, object]]:
@@ -99,7 +113,7 @@ def redact_headers(value: object) -> list[dict[str, object]]:
     else:
         iterable = []
     for name, raw in list(iterable)[:MAX_ENTRIES]:
-        items.append({"name": bounded(name, 256), "state": "set" if raw is not None else "missing", "value": None})
+        items.append({"name": bounded(sanitize_text(name), 256), "state": "set" if raw is not None else "missing", "value": None})
     return items
 
 
@@ -117,26 +131,28 @@ def normalized_server(name: object, raw: object, *, source_id: str = "") -> dict
     raw_env = entry.get("env", entry.get("environment", {}))
     if isinstance(raw_env, dict):
         environment = [redact_env(key, value) for key, value in list(raw_env.items())[:MAX_ENTRIES]]
+    safe_name = bounded(sanitize_text(name), 256)
+    diagnostics = [] if valid_name(name) and safe_name == str(name) else [{"code": "unsupported-name", "severity": "warning", "label": "Server name cannot be managed safely"}]
     return {
-        "serverId": f"{source_id}:{bounded(name, 256)}",
-        "name": bounded(name, 256),
+        "serverId": stable_id("srv", source_id, name),
+        "name": safe_name,
         "transport": bounded(transport, 64),
         "enabled": enabled,
         "required": bool(entry.get("required", False)),
         "command": command,
         "args": args,
-        "cwd": bounded(entry.get("cwd")) if entry.get("cwd") is not None else None,
+        "cwd": bounded(sanitize_text(entry.get("cwd"))) if entry.get("cwd") is not None else None,
         "url": redact_url(url),
         "environment": environment,
         "headers": redact_headers(entry.get("headers", entry.get("http_headers", entry.get("httpHeaders", {})))),
         "adapterFields": {"type": bounded(entry.get("type"))} if entry.get("type") is not None else {},
-        "diagnostics": [],
+        "diagnostics": diagnostics,
     }
 
 
 def sanitize_object(value: object, key: object = "") -> object:
     if isinstance(value, dict):
-        return {bounded(k, 256): sanitize_object(v, k) for k, v in list(value.items())[:MAX_ENTRIES]}
+        return {bounded(sanitize_text(k), 256): sanitize_object(v, k) for k, v in list(value.items())[:MAX_ENTRIES]}
     if isinstance(value, list):
         return [sanitize_object(v, key) for v in value[:MAX_ENTRIES]]
     return redacted_value(value, key)
@@ -150,6 +166,53 @@ def sanitize_text(value: object, known_secrets: list[str] | None = None) -> str:
     text = SECRET_VALUE.sub("<secret hidden>", text)
     text = re.sub(r"(?i)(token|secret|password|api[_-]?key|authorization)\s*[:=]\s*[^\s,;]+", r"\1=<secret hidden>", text)
     return text.replace(str(__import__("pathlib").Path.home()), "~")
+
+
+def contains_secret_material(value: object, key: str = "") -> bool:
+    """Conservatively identify raw secret material before it can enter argv or a plan."""
+
+    if isinstance(value, dict):
+        for raw_key, item in value.items():
+            child_key = str(raw_key)
+            if secret_key(child_key) and item is not None and item != "" and not is_environment_reference(item):
+                return True
+            lowered = child_key.lower()
+            if lowered in {"url", "serverurl", "server_url", "endpoint"} and isinstance(item, str):
+                try:
+                    parsed = urlsplit(item)
+                    if parsed.username or parsed.password or parsed.query:
+                        return True
+                except (ValueError, UnicodeError):
+                    return True
+            if contains_secret_material(item, child_key):
+                return True
+        return False
+    if isinstance(value, list):
+        secret_next = False
+        for item in value:
+            text = str(item)
+            if secret_next:
+                if is_environment_reference(item):
+                    secret_next = False
+                    continue
+                return True
+            if SECRET_VALUE.search(text):
+                return True
+            if text.startswith("-") and secret_key(text.lstrip("-")):
+                if "=" in text or ":" in text:
+                    return True
+                secret_next = True
+                continue
+            if contains_secret_material(item, key):
+                return True
+        return False
+    if isinstance(value, str):
+        if is_environment_reference(value):
+            return False
+        if SECRET_VALUE.search(value):
+            return True
+        return bool(re.search(r"(?i)(token|secret|password|api[_-]?key|authorization)\s*[:=]\s*\S+", value))
+    return False
 
 
 def response_safe(value: object) -> object:

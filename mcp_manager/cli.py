@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import stat
 import sys
 from pathlib import Path
 from typing import Any
 
-from .adapters import adapter_by_id
-from .conversion import comparison, conversion_preview, find_server
+from .adapters import adapter_by_id, parse_source, writer_supported
+from .conversion import comparison, conversion_batch_preview, conversion_preview, find_server
 from .discovery import _imports_path, public_scan, scan
+from .json_source import loads as strict_json_loads
 from .model import stable_id
-from .paths import UnsafePathError, manager_dirs, read_bytes, source_display, validate_path
-from .planner import PlanError, apply as apply_plan, plan
-from .redaction import response_safe, sanitize_text
-from .transaction import TransactionError, atomic_file, history, read_json, recover, restore_backup
+from .paths import UnsafePathError, decode_source, manager_dirs, read_bytes, source_display, validate_path
+from .planner import PlanError, apply as apply_plan, plan, plan_restore
+from .redaction import contains_secret_material, response_safe, sanitize_text
+from .transaction import TransactionError, atomic_file, history, read_json, recover
 
 
 def response(operation: str, *, ok: bool, data: Any = None, warnings: list[Any] | None = None, error: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -26,18 +26,26 @@ def response(operation: str, *, ok: bool, data: Any = None, warnings: list[Any] 
 
 def _request(path_text: str) -> dict[str, Any]:
     path = validate_path(path_text, allow_missing=False, source=False)
-    info = os.lstat(path)
+    data, info = read_bytes(path, max_size=64 * 1024)
     if stat.S_IMODE(info.st_mode) & 0o077:
         raise PlanError("request file must be owner-only")
-    data, _ = read_bytes(path, max_size=64 * 1024)
-    value = json.loads(data.decode("utf-8"))
+    value = strict_json_loads(data.decode("utf-8"), jsonc=False)
     if not isinstance(value, dict):
         raise PlanError("request file must contain one object")
     return value
 
 
+class CliUsageError(ValueError):
+    pass
+
+
+class JsonArgumentParser(argparse.ArgumentParser):
+    def error(self, _message: str) -> None:
+        raise CliUsageError("invalid command arguments")
+
+
 def _arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(add_help=True)
+    parser = JsonArgumentParser(add_help=True)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("scan")
     source = sub.add_parser("source")
@@ -63,6 +71,10 @@ def _arg_parser() -> argparse.ArgumentParser:
     convert.add_argument("--source-id", required=True)
     convert.add_argument("--server-name", required=True)
     convert.add_argument("--target-adapter", required=True)
+    convert_batch = sub.add_parser("convert-batch-preview")
+    convert_batch.add_argument("--source-id", required=True)
+    convert_batch.add_argument("--server-name", required=True)
+    convert_batch.add_argument("--target-adapter", action="append", required=True)
     sub.add_parser("recover")
     register = sub.add_parser("import-register")
     register.add_argument("--path", required=True)
@@ -79,6 +91,11 @@ def _register(path_text: str, adapter_id: str, mode: str) -> dict[str, Any]:
     suffix = path.suffix.lower()
     if suffix not in {".json", ".jsonc", ".toml"}:
         raise PlanError("imports must be JSON, JSONC, or recognized Codex TOML")
+    data, _ = read_bytes(path)
+    text = decode_source(data)
+    parsed = parse_source(adapter, text, path)
+    if mode == "manage" and not writer_supported(adapter, text, path, parsed):
+        raise PlanError("manage-in-place requires an unambiguous supported writer schema")
     current = read_json(_imports_path(), [])
     if not isinstance(current, list):
         current = []
@@ -106,9 +123,10 @@ def _forget(source_id: str) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = _arg_parser()
-    args = parser.parse_args(argv)
-    op = args.command
+    op = "unknown"
     try:
+        args = parser.parse_args(argv)
+        op = args.command
         if op == "scan":
             return _print(response(op, ok=True, data=public_scan(scan())))
         if op == "source":
@@ -119,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             return _print(response(op, ok=True, data=source))
         if op == "doctor":
             result = public_scan(scan())
-            return _print(response(op, ok=True, data={"agents": result.get("agents", []), "diagnostics": result.get("diagnostics", [])}))
+            return _print(response(op, ok=True, data=result))
         if op == "compare":
             result = scan()
             return _print(response(op, ok=True, data=comparison(public_scan(result))))
@@ -127,30 +145,34 @@ def main(argv: list[str] | None = None) -> int:
             result = public_scan(scan())
             server = find_server(result, args.source_id, args.server_name)
             return _print(response(op, ok=True, data=conversion_preview(server, args.target_adapter)))
+        if op == "convert-batch-preview":
+            result = public_scan(scan())
+            server = find_server(result, args.source_id, args.server_name)
+            return _print(response(op, ok=True, data=conversion_batch_preview(server, args.target_adapter)))
         if op == "plan":
             return _print(response(op, ok=True, data=plan(_request(args.request_file))))
         if op == "plan-json":
-            request = json.loads(args.json)
+            request = strict_json_loads(args.json, jsonc=False)
             if not isinstance(request, dict):
                 raise PlanError("request JSON must be an object")
             if "secretReplacements" in request:
                 raise PlanError("secret replacements require an owner-only request file")
+            if contains_secret_material(request):
+                raise PlanError("raw secret material is not accepted in argv")
             return _print(response(op, ok=True, data=plan(request)))
         if op == "apply":
             return _print(response(op, ok=True, data=apply_plan(args.plan_id, _request(args.request_file))))
         if op == "apply-json":
-            request = json.loads(args.json)
+            request = strict_json_loads(args.json, jsonc=False)
             if not isinstance(request, dict):
                 raise PlanError("request JSON must be an object")
             if "secretReplacements" in request:
                 raise PlanError("secret replacements require an owner-only request file")
+            if contains_secret_material(request):
+                raise PlanError("raw secret material is not accepted in argv")
             return _print(response(op, ok=True, data=apply_plan(args.plan_id, request)))
         if op == "restore":
-            result = scan()
-            source = result.get("_internal", {}).get(args.source_id)
-            if not source:
-                raise KeyError("unknown source id")
-            return _print(response(op, ok=True, data=restore_backup(args.backup_id, args.source_id, source["record"]["_path"])))
+            return _print(response(op, ok=True, data=plan_restore(args.backup_id, args.source_id)))
         if op == "history":
             return _print(response(op, ok=True, data={"entries": history(args.limit)}))
         if op == "recover":
@@ -168,6 +190,8 @@ def main(argv: list[str] | None = None) -> int:
             code = "not-found"
         elif isinstance(exc, PlanError):
             code = "plan-error"
+        elif isinstance(exc, CliUsageError):
+            code = "invalid-request"
         message = sanitize_text(str(exc)) or "operation failed"
         return _print(response(op, ok=False, warnings=[], error={"code": code, "message": message}))
 

@@ -17,6 +17,8 @@ def comparison(scan_result: dict[str, Any]) -> dict[str, Any]:
             for server in source.get("servers", []):
                 name = str(server.get("name", ""))
                 names.add(name)
+                if name in row["servers"]:
+                    continue
                 row["servers"][name] = {
                     "state": "enabled" if server.get("enabled") else "disabled",
                     "transport": server.get("transport", "unknown"),
@@ -60,6 +62,22 @@ def conversion_preview(server: dict[str, Any], target_id: str) -> dict[str, Any]
         "payload": payload,
         "warnings": warnings,
         "lossy": bool(warnings),
+        "secretPolicy": "Embedded secret values are never copied.",
+    }
+
+
+def conversion_batch_preview(server: dict[str, Any], target_ids: list[str]) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    failures: list[dict[str, str]] = []
+    for target_id in list(dict.fromkeys(str(item) for item in target_ids))[:16]:
+        try:
+            results.append(conversion_preview(server, target_id))
+        except KeyError:
+            failures.append({"targetAdapter": "unknown", "code": "unsupported-target", "message": "Target adapter is not supported"})
+    return {
+        "results": results,
+        "failures": failures,
+        "partialFailure": bool(results and failures),
         "secretPolicy": "Embedded secret values are never copied.",
     }
 

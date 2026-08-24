@@ -50,9 +50,9 @@ def deep_limit(value: Any, depth: int = 0) -> bool:
     if depth > MAX_DEPTH:
         return False
     if isinstance(value, dict):
-        return all(deep_limit(k, depth + 1) and deep_limit(v, depth + 1) for k, v in value.items())
+        return len(value) <= MAX_SERVERS and all(deep_limit(k, depth + 1) and deep_limit(v, depth + 1) for k, v in value.items())
     if isinstance(value, list):
-        return all(deep_limit(v, depth + 1) for v in value)
+        return len(value) <= MAX_SERVERS and all(deep_limit(v, depth + 1) for v in value)
     if isinstance(value, str):
         return len(value) <= MAX_STRING * 4
     return True

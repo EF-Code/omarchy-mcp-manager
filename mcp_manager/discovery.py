@@ -8,8 +8,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .adapters import Adapter, SourceSpec, adapter_by_id, adapters, normalized_servers, parse_source
-from .diagnostics import cross_source_diagnostics, source_diagnostics
+from .adapters import Adapter, SourceSpec, adapter_by_id, adapters, normalized_servers, parse_source, writer_supported
+from .diagnostics import cross_source_diagnostics, server_diagnostics, source_diagnostics
 from .model import MAX_IMPORTS, MAX_SERVERS, deep_limit, stable_id
 from .paths import (UnsafePathError, decode_source, manager_dirs, metadata, read_bytes,
                     source_display, validate_path)
@@ -47,7 +47,9 @@ def default_agent() -> tuple[str, list[dict[str, str]]]:
     try:
         data, _ = read_bytes(path, max_size=128)
         value = data.decode("utf-8").strip().splitlines()[0].strip().lower()
-    except (OSError, UnicodeError, UnsafePathError, IndexError):
+    except UnsafePathError:
+        return "", [{"code": "default-agent-unreadable", "severity": "warning", "label": "Omarchy default-agent selector is unsafe or unreadable"}]
+    except (OSError, UnicodeError, IndexError):
         return "", []
     if value not in DEFAULT_AGENT_IDS:
         return "", [{"code": "unknown-default-agent", "severity": "info", "label": "Omarchy default agent is not in the supported catalog"}]
@@ -68,6 +70,7 @@ def load_imports() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
         if not isinstance(parsed, list):
             raise ValueError
         result = []
+        diagnostics: list[dict[str, str]] = []
         for item in parsed[:MAX_IMPORTS]:
             if not isinstance(item, dict):
                 continue
@@ -75,8 +78,13 @@ def load_imports() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
             adapter_id = str(item.get("adapter", ""))
             mode = str(item.get("mode", "read"))
             if path_value and adapter_id and mode in {"read", "manage"}:
+                try:
+                    adapter_by_id(adapter_id)
+                except KeyError:
+                    diagnostics.append({"code": "import-adapter-unknown", "severity": "warning", "label": "An import with an unknown adapter was skipped"})
+                    continue
                 result.append({"path": path_value, "adapter": adapter_id, "mode": mode})
-        return result, []
+        return result, diagnostics
     except (OSError, UnicodeError, UnicodeDecodeError, ValueError, UnsafePathError):
         return [], [{"code": "imports-unreadable", "severity": "warning", "label": "Import registry is unreadable; imports were skipped"}]
 
@@ -133,14 +141,17 @@ def _source_record(adapter: Adapter, spec: SourceSpec, source_id: str, default_i
         parsed = parse_source(adapter, text, spec.path)
         record["format"] = parsed["format"]
         record["servers"] = normalized_servers(adapter, parsed, source_id)
+        for server in record["servers"]:
+            server["diagnostics"] = server_diagnostics(server)
         if not deep_limit(parsed["data"]):
             raise ValueError("configuration exceeds nesting or string limits")
-        record["status"] = "imported" if spec.imported else ("managed" if record["managed"] else "ready")
+        record["status"] = "managed" if record["managed"] else ("imported" if spec.imported else "ready")
         record["diagnostics"] = source_diagnostics(record)
-        adapter_writable = adapter.can_write and not (adapter.id == "claude" and spec.scope == "user")
+        adapter_writable = writer_supported(adapter, text, spec.path, parsed) and not (adapter.id == "claude" and spec.scope == "user")
         record["writable"] = bool(adapter_writable and (not spec.imported or spec.import_mode == "manage"))
         if not record["writable"]:
-            record["diagnostics"].append({"code": "read-only", "severity": "info", "label": "Read-only source"})
+            label = "Read-only source" if adapter_writable or not adapter.can_write else "Schema is readable but not safely patchable"
+            record["diagnostics"].append({"code": "read-only", "severity": "info", "label": label})
         if spec.imported:
             record["diagnostics"].append({"code": "explicit-import", "severity": "info", "label": "Explicitly imported source"})
     except (OSError, UnicodeError, UnsafePathError, ValueError, KeyError) as exc:
@@ -155,7 +166,6 @@ def scan() -> dict[str, Any]:
     dirs = discovery_dirs()
     selected, default_diagnostics = default_agent()
     imports, import_diagnostics = load_imports()
-    import_by_path: dict[str, dict[str, str]] = {item["path"]: item for item in imports}
     agents: list[dict[str, Any]] = []
     internal: dict[str, dict[str, Any]] = {}
     for adapter in adapters():

@@ -22,14 +22,14 @@ class UnsafePathError(ValueError):
 
 def xdg_dirs() -> dict[str, Path]:
     home = Path.home()
-    config = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config")).expanduser()
-    state = Path(os.environ.get("XDG_STATE_HOME", home / ".local" / "state")).expanduser()
-    cache = Path(os.environ.get("XDG_CACHE_HOME", home / ".cache")).expanduser()
-    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", "/run/user"))
-    if runtime.name == str(os.getuid()):
-        runtime = runtime
-    else:
-        runtime = runtime / str(os.getuid())
+    def configured(name: str, fallback: Path) -> Path:
+        value = Path(os.environ.get(name, str(fallback))).expanduser()
+        return value if value.is_absolute() else fallback
+
+    config = configured("XDG_CONFIG_HOME", home / ".config")
+    state = configured("XDG_STATE_HOME", home / ".local" / "state")
+    cache = configured("XDG_CACHE_HOME", home / ".cache")
+    runtime = configured("XDG_RUNTIME_DIR", Path("/run/user") / str(os.getuid()))
     return {"home": home, "config": config, "state": state, "cache": cache, "runtime": runtime}
 
 
@@ -41,15 +41,12 @@ def manager_dirs(create: bool = False) -> dict[str, Path]:
         "runtime": dirs["runtime"] / "omarchy-mcp-manager",
     }
     if create:
-        for key, path in result.items():
-            path.mkdir(mode=0o700, parents=True, exist_ok=True)
-            os.chmod(path, 0o700)
+        for path in result.values():
+            safe_directory(path)
         for child in ("backups", "journal", "plans", "locks"):
             path = result["state"] / child
-            path.mkdir(mode=0o700, exist_ok=True)
-            os.chmod(path, 0o700)
-        (result["runtime"] / "locks").mkdir(mode=0o700, exist_ok=True)
-        os.chmod(result["runtime"] / "locks", 0o700)
+            safe_directory(path)
+        safe_directory(result["runtime"] / "locks")
     return result
 
 
@@ -59,6 +56,8 @@ def _absolute(path: str | Path) -> Path:
         raise UnsafePathError("path must be absolute")
     if "\x00" in str(value) or any(ord(char) < 32 for char in str(value)):
         raise UnsafePathError("path contains control characters")
+    if ".." in value.parts:
+        raise UnsafePathError("path traversal components are not accepted")
     return value
 
 
@@ -98,11 +97,13 @@ def validate_path(path: str | Path, *, allow_missing: bool = False, source: bool
             raise UnsafePathError("source is not a regular file")
         if source and info.st_uid != os.getuid():
             raise UnsafePathError("source is not owned by the current user")
+        if source and stat.S_IMODE(info.st_mode) & 0o022:
+            raise UnsafePathError("source permissions are too broad")
     parent = candidate.parent
     if not parent.exists() or not parent.is_dir():
         raise UnsafePathError("parent directory is unavailable")
     parent_info = os.lstat(parent)
-    if parent_info.st_uid != os.getuid() or parent_info.st_mode & 0o002:
+    if not stat.S_ISDIR(parent_info.st_mode) or parent_info.st_uid != os.getuid() or parent_info.st_mode & 0o022:
         raise UnsafePathError("parent directory ownership or mode is unsafe")
     return candidate
 
@@ -162,8 +163,22 @@ def source_display(path: str | Path) -> str:
 
 
 def safe_directory(path: Path) -> None:
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(path, 0o700)
+    candidate = _absolute(path)
+    _check_components(candidate, allow_missing=True)
+    candidate.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _check_components(candidate, allow_missing=False)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(candidate, flags)
+    except OSError as exc:
+        raise UnsafePathError("private state directory is unavailable") from exc
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+            raise UnsafePathError("private state directory ownership or type is unsafe")
+        os.fchmod(fd, 0o700)
+    finally:
+        os.close(fd)
 
 
 def is_environment_reference(value: object) -> str | None:

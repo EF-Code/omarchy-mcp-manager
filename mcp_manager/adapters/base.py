@@ -180,14 +180,21 @@ def _json_entry(data: dict[str, Any], path: list[str] | None) -> dict[str, Any]:
 
 def parse_source(adapter: Adapter, text: str, path: Path) -> dict[str, Any]:
     suffix = path.suffix.lower()
-    if "toml" in adapter.formats:
+    if suffix == ".toml":
+        if "toml" not in adapter.formats:
+            raise ValueError("TOML is not supported by this adapter")
         data = toml_source.parse(text)
         mcp_path = adapter.mcp_path_selector(data, str(path))
         if not mcp_path:
             raise ValueError("recognized MCP table is missing")
         entries = _json_entry(data, mcp_path)
         return {"data": data, "mcpPath": mcp_path, "servers": entries, "format": "toml"}
+    if suffix not in {".json", ".jsonc"}:
+        raise ValueError("source extension is not supported by this adapter")
     jsonc = suffix == ".jsonc"
+    expected_format = "jsonc" if jsonc else "json"
+    if expected_format not in adapter.formats:
+        raise ValueError(f"{expected_format.upper()} is not supported by this adapter")
     data = json_source.loads(text, jsonc=jsonc)
     if not isinstance(data, dict):
         raise ValueError("JSON root is not an object")
@@ -208,6 +215,14 @@ def normalized_servers(adapter: Adapter, parsed: dict[str, Any], source_id: str)
             break
         result.append(normalized_server(name, raw, source_id=source_id))
     return result
+
+
+def writer_supported(adapter: Adapter, text: str, path: Path, parsed: dict[str, Any]) -> bool:
+    if not adapter.can_write:
+        return False
+    if parsed.get("format") == "toml":
+        return toml_source.can_write(text)
+    return parsed.get("format") in {"json", "jsonc"} and bool(parsed.get("mcpPath"))
 
 
 def patch_source(adapter: Adapter, text: str, path: Path, *, action: str, name: str, payload: dict[str, Any]) -> str:
@@ -234,7 +249,7 @@ _ADAPTERS = (
     _adapter("grok", "Grok", ("grok",), "read-only", ("json", "jsonc"), _grok_specs, _generic_path, "Implementation-specific; detection and explanation only."),
 )
 
-_GENERIC = _adapter("generic", "Generic import", (), "read-only", ("json", "jsonc", "toml"), lambda _dirs: (), _generic_path, "Explicit import only; write requires a separately proven adapter.")
+_GENERIC = _adapter("generic", "Generic import", (), "read-write", ("json", "jsonc", "toml"), lambda _dirs: (), _generic_path, "Explicit import only; read-only by default, with schema-gated manage-in-place authorization.")
 
 
 def adapters(*, include_generic: bool = False) -> tuple[Adapter, ...]:
