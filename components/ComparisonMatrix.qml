@@ -42,9 +42,6 @@ Rectangle {
             color: Qt.alpha(root.foreground, 0.7)
             font.pixelSize: Style.font.caption
             Layout.preferredWidth: Style.space(20)
-            // The column labels remain in the accessible tooltip; the matrix
-            // is intentionally compact for narrow bar placements.
-            ToolTip.visible: false
           }
         }
       }

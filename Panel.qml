@@ -38,6 +38,35 @@ Panel {
   readonly property var selectedServer: servers.length > 0 && selectedServerIndex >= 0 && selectedServerIndex < servers.length ? servers[selectedServerIndex] : null
   readonly property string mode: Model.responsiveMode(!!(bar && bar.vertical), panel.screenW, panel.screenH, 1)
 
+  function chooseUsefulSource() {
+    if (sources.length === 0) return
+    if (selectedSource && selectedSource.servers && selectedSource.servers.length > 0) return
+    for (var i = 0; i < sources.length; i++) {
+      if (sources[i].servers && sources[i].servers.length > 0) {
+        selectedSourceIndex = i
+        selectedServerIndex = 0
+        return
+      }
+    }
+  }
+
+  onSourcesChanged: {
+    if (selectedSourceIndex >= sources.length) selectedSourceIndex = Math.max(0, sources.length - 1)
+    if (selectedSource && (!selectedSource.servers || selectedSource.servers.length === 0)) {
+      for (var i = 0; i < sources.length; i++) {
+        if (sources[i].servers && sources[i].servers.length > 0) {
+          selectedSourceIndex = i
+          break
+        }
+      }
+    }
+  }
+
+  Connections {
+    target: backend
+    function onDataChanged() { Qt.callLater(root.chooseUsefulSource) }
+  }
+
   function open() {
     root.controller.show()
     backend.recoverAndRefresh()
@@ -207,7 +236,7 @@ Panel {
               placeholderText: "Search agents, sources, servers, diagnostics…"
               text: root.query
               onTextChanged: { root.query = text; root.selectedServerIndex = 0 }
-              focusable: true
+              activeFocusOnTab: true
             }
             Button { text: root.filter === "all" ? "All" : root.filter; focusable: true; onClicked: root.filter = root.filter === "all" ? "enabled" : root.filter === "enabled" ? "issues" : root.filter === "issues" ? "disabled" : "all" }
           }

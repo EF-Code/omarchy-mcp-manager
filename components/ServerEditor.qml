@@ -25,7 +25,7 @@ Rectangle {
     Text { text: root.server ? "EDIT SERVER" : "ADD SERVER"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true }
     TextField { id: nameField; Layout.fillWidth: true; placeholderText: "Server name"; text: root.server ? String(root.server.name || "") : "" }
     TextField { id: commandField; Layout.fillWidth: true; placeholderText: "Command (stdio)"; text: root.server ? String(root.server.command || "") : "" }
-    TextField { id: urlField; Layout.fillWidth: true; placeholderText: "URL (optional HTTP/SSE)"; text: root.server && root.server.url && root.server.url.display ? String(root.server.url.display) : "" }
+    TextField { id: urlField; Layout.fillWidth: true; placeholderText: root.server && root.server.url && root.server.url.state === "set" ? "URL hidden — leave blank to preserve" : "URL (optional HTTP/SSE)"; text: root.server && root.server.url && root.server.url.state !== "set" && root.server.url.display ? String(root.server.url.display) : "" }
     Text { Layout.fillWidth: true; text: "Existing secret and environment values remain hidden and are never copied automatically."; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap }
     RowLayout {
       Layout.fillWidth: true

@@ -95,7 +95,7 @@ QtObject {
     }
   }
 
-  Process {
+  property var helperProcess: Process {
     id: helper
     stdout: StdioCollector { id: stdoutCollector; waitForEnd: true }
     stderr: StdioCollector { id: stderrCollector; waitForEnd: true }
