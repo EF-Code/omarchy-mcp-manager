@@ -6,6 +6,7 @@ from pathlib import Path
 from mcp_manager.adapters import adapter_by_id, normalized_servers, parse_source, patch_source
 from mcp_manager.discovery import scan
 from mcp_manager.conversion import comparison, conversion_preview
+from mcp_manager.cli import _forget, _register
 from mcp_manager.json_source import DuplicateKeyError, SourceParseError, loads
 from mcp_manager.toml_source import parse as parse_toml
 
@@ -67,6 +68,32 @@ class AdapterTests(unittest.TestCase):
         result = comparison({"agents": [{"id": "codex", "name": "Codex", "sources": [{"sourceId": "s", "servers": [{"name": "alpha", "enabled": True, "transport": "stdio"}]}]}]})
         self.assertEqual(result["serverNames"], ["alpha"])
         self.assertEqual(result["agents"][0]["servers"]["alpha"]["state"], "enabled")
+
+    def test_import_authorization_is_explicit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            imported = root / "import.json"
+            imported.write_text('{"mcpServers":{"imported":{"command":"echo"}}}\n', encoding="utf-8")
+            old = {key: os.environ.get(key) for key in ("HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR")}
+            try:
+                os.environ.update({"HOME": str(root / "home"), "XDG_CONFIG_HOME": str(root / "home/.config"), "XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "run")})
+                _register(str(imported), "generic", "read")
+                result = scan()
+                generic = next(agent for agent in result["agents"] if agent["id"] == "generic")
+                self.assertFalse(generic["sources"][0]["writable"])
+                _forget(generic["sources"][0]["sourceId"])
+                self.assertFalse(any(agent["id"] == "generic" for agent in scan()["agents"]))
+                _register(str(imported), "gemini", "manage")
+                result = scan()
+                source = next(source for agent in result["agents"] for source in agent["sources"] if source["pathDisplay"].endswith("import.json"))
+                self.assertTrue(source["managed"])
+                self.assertTrue(source["writable"])
+            finally:
+                for key, value in old.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
 
     def test_discovery_precedence_and_antigravity_separate(self):
         with tempfile.TemporaryDirectory() as temp:

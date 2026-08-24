@@ -7,7 +7,7 @@ from pathlib import Path
 
 from mcp_manager.paths import UnsafePathError, metadata, read_bytes, validate_path
 from mcp_manager.redaction import sanitize_text
-from mcp_manager.transaction import TransactionError, commit, recover
+from mcp_manager.transaction import OwnerLock, TransactionError, commit, recover
 
 
 class SecurityTests(unittest.TestCase):
@@ -73,6 +73,25 @@ class SecurityTests(unittest.TestCase):
         safe = sanitize_text(text, ["real-secret-value", "fixture-token-value"])
         self.assertNotIn("real-secret-value", safe)
         self.assertNotIn("fixture-token-value", safe)
+
+    def test_owner_lock_serializes_writers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old_env = {key: os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR")}
+            try:
+                os.environ["XDG_STATE_HOME"] = str(root / "state")
+                os.environ["XDG_CACHE_HOME"] = str(root / "cache")
+                os.environ["XDG_RUNTIME_DIR"] = str(root / "runtime")
+                with OwnerLock("same-source"):
+                    with self.assertRaises(TransactionError):
+                        with OwnerLock("same-source"):
+                            pass
+            finally:
+                for key, value in old_env.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
 
 
 if __name__ == "__main__":
