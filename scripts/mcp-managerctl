@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Portable fixed entry point for MCP Manager's standard-library helper."""
+
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from mcp_manager.cli import main
+
+raise SystemExit(main())
