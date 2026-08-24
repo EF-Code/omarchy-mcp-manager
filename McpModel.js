@@ -45,7 +45,6 @@ function serversFrom(source, query, filter) {
 function diagnosticCount(data) {
   var count = 0
   agentsFrom(data).forEach(function(agent) {
-    count += Array.isArray(agent.diagnostics) ? agent.diagnostics.length : 0
     sourcesFrom(agent).forEach(function(source) {
       count += Array.isArray(source.diagnostics) ? source.diagnostics.length : 0
     })
@@ -109,14 +108,48 @@ function summary(data) {
 function keyHelp() {
   return [
     { key: "h / l", label: "previous / next agent" },
+    { key: "[ / ]", label: "previous / next source" },
     { key: "j / k", label: "move through sources and servers" },
     { key: "/", label: "focus search" },
     { key: "a", label: "add server" },
     { key: "e", label: "edit selected" },
-    { key: "space", label: "prepare enable / disable" },
+    { key: "u", label: "duplicate selected" },
+    { key: "enter / space", label: "edit selected" },
+    { key: "s", label: "prepare enable / disable" },
+    { key: "i / c / o", label: "import / compare / Doctor" },
+    { key: "y", label: "redacted history" },
+    { key: "t / p", label: "cycle target / copy preview" },
     { key: "r", label: "refresh" },
     { key: "esc", label: "close" }
   ]
+}
+
+function duplicatePayload(server) {
+  if (!server) return null
+  var payload = { name: String(server.name || "server") + "-copy", enabled: server.enabled !== false }
+  if (server.command) {
+    payload.command = String(server.command)
+    var args = Array.isArray(server.args) ? server.args : []
+    if (!args.some(function(item) { return String(item).indexOf("<secret hidden>") !== -1 })) payload.args = args.slice()
+  }
+  if (server.url && server.url.state === "clear" && server.url.display) {
+    payload.url = String(server.url.display)
+    payload.transport = String(server.transport || "http")
+  }
+  if (server.cwd) payload.cwd = String(server.cwd)
+  return payload
+}
+
+function writableAgentIds(agents, currentId) {
+  return (Array.isArray(agents) ? agents : []).filter(function(agent) {
+    return agent && agent.id !== currentId && agent.support === "read-write" && (agent.sources || []).some(function(source) { return source && source.writable })
+  }).map(function(agent) { return String(agent.id) })
+}
+
+function historyForSource(entries, sourceId) {
+  return (Array.isArray(entries) ? entries : []).filter(function(entry) {
+    return entry && String(entry.sourceId || "") === String(sourceId || "")
+  }).reverse()
 }
 
 // Node consumes the same pure functions during repository tests; QML ignores
@@ -125,6 +158,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     parseResponse, agentsFrom, sourcesFrom, serversFrom, diagnosticCount,
     serverCount, wrapIndex, nextIndex, responsiveMode, badgeForSource,
-    badgeForAgent, diffLines, summary, keyHelp
+    badgeForAgent, diffLines, summary, keyHelp, duplicatePayload,
+    writableAgentIds, historyForSource
   }
 }

@@ -27,6 +27,7 @@ Rectangle {
       Item { Layout.fillWidth: true }
       Button { text: "Cancel"; onClicked: root.cancelled() }
       Button { text: "Register read-only"; onClicked: root.registerRequested(String(pathField.text), "generic", "read") }
+      Button { text: "Manage in place"; onClicked: root.registerRequested(String(pathField.text), "generic", "manage") }
     }
   }
 }

@@ -26,6 +26,22 @@ Rectangle {
       Item { Layout.fillWidth: true }
       Button { text: "Close"; onClicked: root.closed() }
     }
+    RowLayout {
+      Layout.fillWidth: true
+      Item { Layout.preferredWidth: Style.space(150) }
+      Repeater {
+        model: root.comparison && Array.isArray(root.comparison.agents) ? root.comparison.agents : []
+        Text {
+          required property var modelData
+          text: String(modelData.agentName || modelData.agentId || "Agent")
+          color: Qt.alpha(root.foreground, 0.72)
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          Layout.preferredWidth: Style.space(70)
+          elide: Text.ElideRight
+        }
+      }
+    }
     Repeater {
       model: root.comparison && Array.isArray(root.comparison.serverNames) ? root.comparison.serverNames : []
       RowLayout {
@@ -41,7 +57,7 @@ Rectangle {
             text: modelData.servers && modelData.servers[matrixRow.rowName] ? (modelData.servers[matrixRow.rowName].state === "enabled" ? "●" : "○") : "—"
             color: Qt.alpha(root.foreground, 0.7)
             font.pixelSize: Style.font.caption
-            Layout.preferredWidth: Style.space(20)
+            Layout.preferredWidth: Style.space(70)
           }
         }
       }

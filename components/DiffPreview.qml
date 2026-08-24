@@ -20,5 +20,17 @@ ColumnLayout {
     wrapMode: TextEdit.NoWrap
     background: Rectangle { color: Qt.alpha(root.foreground, 0.06); radius: Style.cornerRadius }
   }
+  Repeater {
+    model: root.preview && Array.isArray(root.preview.warnings) ? root.preview.warnings : []
+    Text {
+      required property string modelData
+      Layout.fillWidth: true
+      text: "• " + modelData
+      color: Qt.alpha(root.foreground, 0.82)
+      font.family: Style.font.family
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.WordWrap
+    }
+  }
   Text { Layout.fillWidth: true; text: "Secret values are not included in this preview."; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap }
 }

@@ -25,7 +25,9 @@ Panel {
   property bool editorOpen: false
   property bool importOpen: false
   property bool compareOpen: false
+  property bool historyOpen: false
   property var editingServer: null
+  property string pendingForgetSourceId: ""
   property string pendingAction: ""
   property string conversionTarget: "codex"
 
@@ -36,7 +38,8 @@ Panel {
   readonly property var selectedSource: sources.length > 0 && selectedSourceIndex >= 0 && selectedSourceIndex < sources.length ? sources[selectedSourceIndex] : null
   readonly property var servers: Model.serversFrom(selectedSource, query, filter)
   readonly property var selectedServer: servers.length > 0 && selectedServerIndex >= 0 && selectedServerIndex < servers.length ? servers[selectedServerIndex] : null
-  readonly property string mode: Model.responsiveMode(!!(bar && bar.vertical), panel.screenW, panel.screenH, 1)
+  readonly property string mode: Model.responsiveMode(!!(bar && bar.vertical), panel.screenW, panel.screenH, Style.fontScale)
+  readonly property var conversionTargets: Model.writableAgentIds(agents, selectedAgent ? String(selectedAgent.id) : "")
 
   function chooseUsefulSource() {
     if (sources.length === 0) return
@@ -69,7 +72,6 @@ Panel {
 
   function open() {
     root.controller.show()
-    backend.recoverAndRefresh()
   }
 
   function close() { root.controller.hide() }
@@ -85,6 +87,12 @@ Panel {
     if (agents.length === 0) return
     selectedAgentIndex = Model.wrapIndex(index, agents.length)
     selectedSourceIndex = 0
+    selectedServerIndex = 0
+  }
+
+  function selectSource(index) {
+    if (sources.length === 0) return
+    selectedSourceIndex = Model.wrapIndex(index, sources.length)
     selectedServerIndex = 0
   }
 
@@ -112,6 +120,31 @@ Panel {
   function prepareRemove() {
     if (selectedServer && selectedSource && selectedSource.writable) selectedRequest("remove-server", {})
     else backend.statusMessage = "This source is read-only"
+  }
+
+  function prepareDuplicate() {
+    if (!selectedServer || !selectedSource || !selectedSource.writable) {
+      backend.statusMessage = "Choose a writable server before duplicating"
+      return
+    }
+    var payload = Model.duplicatePayload(selectedServer)
+    if (!payload) return
+    pendingAction = "duplicate-server"
+    backend.requestPlan({ sourceId: String(selectedSource.sourceId), action: "duplicate-server", serverName: String(selectedServer.name), payload: payload })
+  }
+
+  function prepareForgetImport() {
+    if (!selectedSource || !selectedSource.imported) return
+    pendingForgetSourceId = String(selectedSource.sourceId)
+  }
+
+  function cycleConversionTarget() {
+    if (conversionTargets.length === 0) {
+      backend.statusMessage = "No other writable target agent is available"
+      return
+    }
+    var index = conversionTargets.indexOf(conversionTarget)
+    conversionTarget = conversionTargets[Model.nextIndex(index < 0 ? 0 : index, 1, conversionTargets.length)]
   }
 
   function prepareAdd() {
@@ -155,7 +188,17 @@ Panel {
     if (value === "r") refresh()
     else if (value === "a") prepareAdd()
     else if (value === "e") prepareEdit()
+    else if (value === "u") prepareDuplicate()
+    else if (value === "s") prepareToggle()
     else if (value === "d" || value === "x") prepareRemove()
+    else if (value === "i") importOpen = true
+    else if (value === "c") { compareOpen = true; backend.compare() }
+    else if (value === "o") backend.run(["doctor"], "doctor")
+    else if (value === "y") { historyOpen = true; backend.loadHistory() }
+    else if (value === "[") selectSource(selectedSourceIndex - 1)
+    else if (value === "]") selectSource(selectedSourceIndex + 1)
+    else if (value === "t") cycleConversionTarget()
+    else if (value === "p" && selectedServer && selectedSource) backend.convertPreview(String(selectedSource.sourceId), String(selectedServer.name), conversionTarget)
     else if (value === "?" || value === "h") helpOpen = !helpOpen
     else if (value === "/") searchField.forceActiveFocus()
   }
@@ -168,9 +211,16 @@ Panel {
       editorOpen = false
       importOpen = false
       compareOpen = false
+      historyOpen = false
       helpOpen = false
       backend.pendingPlan = null
+      pendingForgetSourceId = ""
     }
+  }
+
+  onConversionTargetsChanged: {
+    if (conversionTargets.length > 0 && conversionTargets.indexOf(conversionTarget) < 0)
+      conversionTarget = conversionTargets[0]
   }
 
   KeyboardPanel {
@@ -186,9 +236,10 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      blocked: searchField.activeFocus || editorOpen || importOpen
+      blocked: searchField.activeFocus || editorOpen || importOpen || historyOpen || compareOpen || !!backend.conversionPreview || !!backend.pendingPlan || pendingForgetSourceId !== ""
       onMoveRequested: function(dx, dy) { root.moveCursor(dx, dy) }
       onActivateRequested: root.activate()
+      onDeleteRequested: root.prepareRemove()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(text) { root.keyText(text) }
@@ -227,13 +278,25 @@ Panel {
 
           ComparisonMatrix { visible: root.compareOpen; comparison: backend.comparison; foreground: root.foreground; onClosed: root.compareOpen = false }
           ConversionPreview { visible: !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: backend.conversionPreview = null }
+          HistorySheet {
+            visible: root.historyOpen
+            entries: backend.historyEntries
+            sourceId: root.selectedSource ? String(root.selectedSource.sourceId) : ""
+            foreground: root.foreground
+            onClosed: root.historyOpen = false
+            onRestoreRequested: function(backupId, sourceId) {
+              root.historyOpen = false
+              root.pendingAction = "restore"
+              backend.requestRestore(backupId, sourceId)
+            }
+          }
 
           RowLayout {
             Layout.fillWidth: true
             TextField {
               id: searchField
               Layout.fillWidth: true
-              placeholderText: "Search agents, sources, servers, diagnostics…"
+              placeholderText: "Search servers and diagnostics…"
               text: root.query
               onTextChanged: { root.query = text; root.selectedServerIndex = 0 }
               activeFocusOnTab: true
@@ -309,31 +372,49 @@ Panel {
             EmptyState { visible: root.servers.length === 0; title: root.selectedSource ? "No servers in this source" : "No source selected"; description: root.selectedSource ? "Add a server when this source is writable, or import an explicit JSON, JSONC, or Codex TOML file." : "Select an agent and source to inspect its MCP definitions."; foreground: root.foreground }
           }
 
+          ServerDetails { visible: !!root.selectedServer && !root.editorOpen && !root.importOpen; server: root.selectedServer; foreground: root.foreground }
+
           ServerEditor { visible: root.editorOpen; server: root.editingServer; sourceId: root.selectedSource ? String(root.selectedSource.sourceId) : ""; foreground: root.foreground; onSaveRequested: root.editorSave(value); onCancelled: root.editorOpen = false }
 
-          ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.run(["import-register", "--path", path, "--adapter", adapter, "--mode", mode], "scan") }; onCancelled: root.importOpen = false }
+          ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.run(["import-register", "--path", path, "--adapter", adapter, "--mode", mode], "import") }; onCancelled: root.importOpen = false }
 
-          RowLayout {
+          Flow {
             Layout.fillWidth: true
+            spacing: Style.space(5)
             Button { text: "Add"; focusable: true; onClicked: root.prepareAdd() }
             Button { text: "Edit"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareEdit() }
+            Button { text: "Duplicate"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareDuplicate() }
             Button { text: root.selectedServer && root.selectedServer.enabled ? "Disable" : "Enable"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareToggle() }
             Button { text: "Remove"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareRemove() }
             Button { text: "Import"; focusable: true; onClicked: root.importOpen = true }
-            Item { Layout.fillWidth: true }
+            Button { text: "Forget import"; focusable: true; visible: !!(root.selectedSource && root.selectedSource.imported); onClicked: root.prepareForgetImport() }
             Button { text: "Compare"; focusable: true; onClicked: { root.compareOpen = true; backend.compare() } }
-            Button { text: "Copy preview → " + root.conversionTarget; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource; onClicked: backend.convertPreview(String(root.selectedSource.sourceId), String(root.selectedServer.name), root.conversionTarget) }
+            Button { text: "Target: " + root.conversionTarget; focusable: true; onClicked: root.cycleConversionTarget() }
+            Button { text: "Copy preview"; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource && root.conversionTargets.length > 0; onClicked: backend.convertPreview(String(root.selectedSource.sourceId), String(root.selectedServer.name), root.conversionTarget) }
             Button { text: "Doctor"; focusable: true; onClicked: backend.run(["doctor"], "doctor") }
+            Button { text: "History"; focusable: true; enabled: !!root.selectedSource; onClicked: { root.historyOpen = true; backend.loadHistory() } }
             Button { text: "Refresh"; focusable: true; onClicked: root.refresh() }
           }
 
           ConfirmSheet {
             visible: !!backend.pendingPlan
             preview: backend.pendingPlan ? backend.pendingPlan.preview : null
-            title: root.pendingAction === "remove-server" ? "Remove server?" : "Apply MCP change?"
+            title: root.pendingAction === "remove-server" ? "Remove server?" : root.pendingAction === "restore" ? "Restore this backup?" : "Apply MCP change?"
             foreground: root.foreground
             onCancelled: backend.pendingPlan = null
             onConfirmed: backend.applyPending()
+          }
+          ConfirmSheet {
+            visible: root.pendingForgetSourceId !== ""
+            preview: ({ textDiff: [], warnings: ["This removes only MCP Manager's import registration. The imported file is not changed."] })
+            title: "Forget this import?"
+            foreground: root.foreground
+            onCancelled: root.pendingForgetSourceId = ""
+            onConfirmed: {
+              var sourceId = root.pendingForgetSourceId
+              root.pendingForgetSourceId = ""
+              backend.forgetImport(sourceId)
+            }
           }
         }
       }
