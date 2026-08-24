@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "detected-only": {"command": "echo"}
+  }
+}

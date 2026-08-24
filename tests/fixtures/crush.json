@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "legacy": {"command": "echo", "enabled": true}
+  }
+}

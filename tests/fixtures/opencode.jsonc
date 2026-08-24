@@ -1,0 +1,9 @@
+{
+  // v2 shape with a disabled server.
+  "mcp": {
+    "servers": {
+      "docs": {"type": "remote", "url": "https://mcp.example.test/docs", "disabled": false},
+    },
+  },
+  "theme": "preserved",
+}

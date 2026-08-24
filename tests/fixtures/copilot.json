@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "repo-tools": {"command": "python3", "args": ["-m", "example_server"]}
+  },
+  "shared": true
+}

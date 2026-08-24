@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "workspace": {"serverURL": "https://mcp.example.test/workspace", "type": "http"}
+  },
+  "version": "fixture"
+}

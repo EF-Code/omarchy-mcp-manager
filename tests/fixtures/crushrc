@@ -1,0 +1,3 @@
+#!/bin/sh
+# This is intentionally code-like fixture text. It must never be sourced.
+MCP_SERVER="fixture"

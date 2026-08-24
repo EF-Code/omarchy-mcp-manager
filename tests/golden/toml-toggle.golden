@@ -1,0 +1,11 @@
+title = "keep"
+
+[mcp_servers."alpha.name"]
+command = "echo"
+args = ["one"]
+enabled = false
+
+[mcp_servers."alpha.name".env]
+TOKEN = "$TOKEN"
+[other]
+value = 1

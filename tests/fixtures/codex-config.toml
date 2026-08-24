@@ -1,0 +1,13 @@
+title = "fixture"
+
+[mcp_servers."context7"]
+command = "npx"
+args = ["-y", "@example/context7"]
+env = { API_KEY = "$CONTEXT7_TOKEN" }
+
+[mcp_servers."remote"]
+url = "https://mcp.example.test/sse"
+disabled = true
+
+[unrelated]
+keep = "byte-stable"

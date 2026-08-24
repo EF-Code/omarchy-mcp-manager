@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "local": {"command": "node", "args": ["server.js"]}
+  },
+  "oauthState": {"present": true},
+  "unrelated": "preserved"
+}

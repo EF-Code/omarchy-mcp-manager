@@ -1,0 +1,11 @@
+{
+  // keep this comment
+  "name": "demo",
+  "mcpServers": {
+    "alpha": {
+      "command": "echo",
+      "disabled": true,
+      "x-unknown": {"keep": true}
+    },
+  },
+}

@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "local": {"command": "echo", "args": ["hello"], "env": {"MODE": "fixture"}}
+  },
+  "mcp": {"exclude": ["dangerous-tool"]}
+}
