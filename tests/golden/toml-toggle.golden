@@ -1,11 +1,13 @@
 title = "keep"
 
 [mcp_servers."alpha.name"]
+# keep server comment
 command = "echo"
 args = ["one"]
 enabled = false
 
 [mcp_servers."alpha.name".env]
 TOKEN = "$TOKEN"
+
 [other]
 value = 1

@@ -23,4 +23,13 @@ assert.strictEqual(model.nextIndex(2, 1, 3), 0);
 assert.strictEqual(model.responsiveMode(false, 900, 700, 1), 'wide');
 assert.strictEqual(model.responsiveMode(true, 900, 700, 1), 'compact');
 assert.ok(model.summary(data).includes('2 agents'));
+assert.strictEqual(model.diagnosticCount({ agents: [{ sources: [{ diagnostics: [{ code: 'one' }] }], diagnostics: [{ code: 'one' }] }], diagnostics: [] }), 1);
+assert.deepStrictEqual(model.duplicatePayload({ name: 'alpha', enabled: true, command: 'echo', args: ['ok'] }), { name: 'alpha-copy', enabled: true, command: 'echo', args: ['ok'] });
+assert.strictEqual(model.duplicatePayload({ name: 'alpha', command: 'echo', args: ['<secret hidden>'] }).args, undefined);
+assert.deepStrictEqual(model.writableAgentIds([
+  { id: 'codex', support: 'read-write', sources: [{ writable: true }] },
+  { id: 'gemini', support: 'read-write', sources: [{ writable: true }] },
+  { id: 'pi', support: 'read-only', sources: [{ writable: false }] }
+], 'codex'), ['gemini']);
+assert.deepStrictEqual(model.historyForSource([{ sourceId: 's1', action: 'old' }, { sourceId: 's2' }, { sourceId: 's1', action: 'new' }], 's1').map(item => item.action), ['new', 'old']);
 console.log('model tests passed');

@@ -23,13 +23,24 @@ if printf '%s\n' "$tracked" | rg -n '(^|/)(node_modules|__pycache__|\.pytest_cac
   exit 1
 fi
 
-mapfile -t scanned_files < <(git ls-files | rg -v '^(README.md|SECURITY.md|CONTRIBUTING.md|CHANGELOG.md|docs/|tests/repository-check.sh)$' || true)
-if ((${#scanned_files[@]} > 0)) && rg -n \
-  '(shell=True|subprocess\.(Popen|run|call)|\beval\s*\(|\bexec\s*\(|pkexec|\bsudo\b|\bcurl\b|\bwget\b|/home/[A-Za-z0-9_.-]+/|BEGIN (RSA|OPENSSH|EC|PRIVATE) KEY|Bearer [A-Za-z0-9._~+/=-]{12,}|\bsk-[A-Za-z0-9_-]{12,})' \
-  "${scanned_files[@]}" >/dev/null; then
-  echo 'forbidden execution, privilege, personal path, or credential pattern found' >&2
+mapfile -t runtime_files < <(git ls-files 'mcp_manager/*.py' 'mcp_manager/adapters/*.py' 'scripts/*' '*.qml' '*.js' 'components/*.qml')
+if ((${#runtime_files[@]} > 0)) && rg -n \
+  '(shell=True|\bsubprocess\b|\bos\.system\s*\(|\bpopen\s*\(|\beval\s*\(|\bexec\s*\(|\bsocket\b|urllib\.request|\brequests\b|\bhttpx\b|\baiohttp\b|pkexec|\bsudo\b|\bcurl\b|\bwget\b)' \
+  "${runtime_files[@]}" >/dev/null; then
+  echo 'forbidden execution, network, privilege, or shell primitive found in runtime code' >&2
   exit 1
 fi
+
+mapfile -t text_files < <(git ls-files | rg -v '^(preview\.(png|jpg|jpeg|webp|avif)|LICENSE)$')
+if ((${#text_files[@]} > 0)) && rg -n \
+  '(/home/[A-Za-z0-9_.-]+/|BEGIN (RSA|OPENSSH|EC|PRIVATE) KEY|Bearer [A-Za-z0-9._~+/=-]{12,}|\bsk-[A-Za-z0-9_-]{12,})' \
+  "${text_files[@]}" >/dev/null; then
+  echo 'personal path or credential pattern found in tracked text' >&2
+  exit 1
+fi
+
+test "$(git ls-files 'manifest.json' '**/manifest.json' | wc -l)" -eq 1
+test -s preview.png
 
 python_bin=${PYTHON_BIN:-python3}
 manifest_id=$($python_bin -c 'import json; print(json.load(open("manifest.json"))["id"])')
