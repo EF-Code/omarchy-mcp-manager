@@ -1,0 +1,33 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Python and model tests
+        run: |
+          python -m unittest discover -s tests -p 'test_*.py' -v
+          node tests/model.test.js
+      - name: Repository safety checks
+        run: bash tests/repository-check.sh
+      - name: QML lint when Omarchy is available
+        run: |
+          if command -v qmllint >/dev/null && test -d /usr/share/omarchy/shell; then
+            qmllint -I /usr/share/omarchy/shell BarWidget.qml Panel.qml Controller.qml components/*.qml
+          else
+            echo 'Omarchy shell not available on this runner; local validation covers QML.'
+          fi

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.ef-code.mcp-manager",
+  "name": "MCP Manager",
+  "version": "1.0.0",
+  "author": "EF-Code",
+  "license": "MIT",
+  "description": "Discover and safely manage MCP servers across your Omarchy coding agents.",
+  "kinds": ["bar-widget"],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "MCP Manager",
+    "description": "View and manage agent MCP configuration from the bar.",
+    "category": "Developer Tools",
+    "aliases": ["mcp", "agents", "tools"],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

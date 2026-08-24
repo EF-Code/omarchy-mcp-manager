@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+coverage.xml
+dist/
+build/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.venv/
+node_modules/
+*.log
+*.tmp
+*.swp
+tests/.tmp/
+preview-source-*.png
