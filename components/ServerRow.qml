@@ -1,0 +1,48 @@
+import QtQuick
+import QtQuick.Layouts
+import qs.Commons
+import qs.Ui
+
+Button {
+  id: root
+  property var server: null
+  property bool selected: false
+  property color foreground: Color.foreground
+  signal editRequested()
+  signal toggleRequested()
+  signal removeRequested()
+  Layout.fillWidth: true
+  Layout.preferredHeight: Style.space(70)
+  hasCursor: selected
+  activeFocusOnTab: true
+  onClicked: root.editRequested()
+
+  contentItem: RowLayout {
+    spacing: Style.space(8)
+    ColumnLayout {
+      Layout.fillWidth: true
+      spacing: Style.space(2)
+      Text {
+        Layout.fillWidth: true
+        text: root.server ? String(root.server.name || "Server") : "Server"
+        color: root.foreground
+        font.family: Style.font.family
+        font.pixelSize: Style.font.body
+        elide: Text.ElideRight
+      }
+      Text {
+        Layout.fillWidth: true
+        text: root.server ? String(root.server.transport || "unknown").toUpperCase() + " · " + (root.server.enabled ? "Enabled" : "Disabled") + (root.server.command ? " · " + String(root.server.command) : "") : ""
+        color: Qt.alpha(root.foreground, 0.7)
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+      }
+    }
+    Button {
+      text: root.server && root.server.enabled ? "Disable" : "Enable"
+      focusable: true
+      onClicked: root.toggleRequested()
+    }
+  }
+}

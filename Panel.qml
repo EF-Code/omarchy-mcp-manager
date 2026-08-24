@@ -1,0 +1,313 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import Quickshell
+import qs.Commons
+import qs.Ui
+import "McpModel.js" as Model
+import "components"
+
+Panel {
+  id: root
+  moduleName: "io.github.ef-code.mcp-manager"
+  manageIpc: false
+
+  property var anchorItem: null
+  property var hostWidget: null
+  property color foreground: bar ? bar.barForeground : Color.foreground
+  property color surface: Color.popups.background
+  property int selectedAgentIndex: 0
+  property int selectedSourceIndex: 0
+  property int selectedServerIndex: 0
+  property string query: ""
+  property string filter: "all"
+  property bool helpOpen: false
+  property bool editorOpen: false
+  property bool importOpen: false
+  property bool compareOpen: false
+  property var editingServer: null
+  property string pendingAction: ""
+  property string conversionTarget: "codex"
+
+  property var backend: Controller { id: backendObject }
+  readonly property var agents: Model.agentsFrom(backend.data)
+  readonly property var selectedAgent: agents.length > 0 && selectedAgentIndex >= 0 && selectedAgentIndex < agents.length ? agents[selectedAgentIndex] : null
+  readonly property var sources: Model.sourcesFrom(selectedAgent)
+  readonly property var selectedSource: sources.length > 0 && selectedSourceIndex >= 0 && selectedSourceIndex < sources.length ? sources[selectedSourceIndex] : null
+  readonly property var servers: Model.serversFrom(selectedSource, query, filter)
+  readonly property var selectedServer: servers.length > 0 && selectedServerIndex >= 0 && selectedServerIndex < servers.length ? servers[selectedServerIndex] : null
+  readonly property string mode: Model.responsiveMode(!!(bar && bar.vertical), panel.screenW, panel.screenH, 1)
+
+  function open() {
+    root.controller.show()
+    backend.recoverAndRefresh()
+  }
+
+  function close() { root.controller.hide() }
+  function toggle() { root.opened ? root.close() : root.open() }
+  function closeForPopoutSwitch() {
+    popoutSwitchClosing = true
+    close()
+    Qt.callLater(function() { popoutSwitchClosing = false })
+  }
+  function refresh() { backend.refresh() }
+
+  function selectAgent(index) {
+    if (agents.length === 0) return
+    selectedAgentIndex = Model.wrapIndex(index, agents.length)
+    selectedSourceIndex = 0
+    selectedServerIndex = 0
+  }
+
+  function moveCursor(dx, dy) {
+    if (dx !== 0) {
+      selectAgent(selectedAgentIndex + dx)
+      return
+    }
+    if (sources.length > 0 && selectedServerIndex < 0) selectedServerIndex = 0
+    if (servers.length > 0) selectedServerIndex = Model.nextIndex(selectedServerIndex, dy, servers.length)
+    else if (sources.length > 0) selectedSourceIndex = Model.nextIndex(selectedSourceIndex, dy, sources.length)
+  }
+
+  function selectedRequest(action, payload) {
+    if (!selectedSource || !selectedServer) return
+    pendingAction = action
+    backend.requestPlan({ sourceId: String(selectedSource.sourceId), action: action, serverName: String(selectedServer.name), payload: payload || {} })
+  }
+
+  function prepareToggle() {
+    if (selectedServer && selectedSource && selectedSource.writable) selectedRequest("set-enabled", { enabled: !selectedServer.enabled })
+    else backend.statusMessage = "This source is read-only"
+  }
+
+  function prepareRemove() {
+    if (selectedServer && selectedSource && selectedSource.writable) selectedRequest("remove-server", {})
+    else backend.statusMessage = "This source is read-only"
+  }
+
+  function prepareAdd() {
+    if (!selectedSource || !selectedSource.writable) {
+      backend.statusMessage = "Choose a writable source before adding a server"
+      return
+    }
+    editingServer = null
+    editorOpen = true
+    helpOpen = false
+  }
+
+  function prepareEdit() {
+    if (!selectedServer || !selectedSource || !selectedSource.writable) {
+      backend.statusMessage = "This server is read-only"
+      return
+    }
+    editingServer = selectedServer
+    editorOpen = true
+    helpOpen = false
+  }
+
+  function editorSave(value) {
+    editorOpen = false
+    if (!selectedSource) return
+    var action = editingServer ? "upsert-server" : "upsert-server"
+    pendingAction = action
+    backend.requestPlan({ sourceId: String(selectedSource.sourceId), action: action, serverName: editingServer ? String(editingServer.name) : String(value.name), payload: value })
+  }
+
+  function activate() {
+    if (helpOpen) { helpOpen = false; return }
+    if (backend.pendingPlan) return
+    if (editorOpen) return
+    if (selectedServer) prepareEdit()
+    else prepareAdd()
+  }
+
+  function keyText(text) {
+    var value = String(text || "").toLowerCase()
+    if (value === "r") refresh()
+    else if (value === "a") prepareAdd()
+    else if (value === "e") prepareEdit()
+    else if (value === "d" || value === "x") prepareRemove()
+    else if (value === "?" || value === "h") helpOpen = !helpOpen
+    else if (value === "/") searchField.forceActiveFocus()
+  }
+
+  onOpenedChanged: {
+    if (opened) {
+      Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+      backend.recoverAndRefresh()
+    } else {
+      editorOpen = false
+      importOpen = false
+      compareOpen = false
+      helpOpen = false
+      backend.pendingPlan = null
+    }
+  }
+
+  KeyboardPanel {
+    id: panel
+    anchorItem: root.anchorItem
+    owner: root.hostWidget || root
+    bar: root.bar
+    open: root.opened
+    focusTarget: keyCatcher
+    contentWidth: fittedContentWidth(Style.space(670))
+    contentHeight: fittedContentHeight(contentColumn.implicitHeight, Style.space(690))
+
+    PanelKeyCatcher {
+      id: keyCatcher
+      anchors.fill: parent
+      blocked: searchField.activeFocus || editorOpen || importOpen
+      onMoveRequested: function(dx, dy) { root.moveCursor(dx, dy) }
+      onActivateRequested: root.activate()
+      onCloseRequested: root.close()
+      onTabRequested: function(direction) { root.switchPanel(direction) }
+      onTextKey: function(text) { root.keyText(text) }
+
+      Flickable {
+        id: panelFlick
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: contentColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        interactive: contentHeight > height
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+        ColumnLayout {
+          id: contentColumn
+          width: panelFlick.width
+          spacing: Style.space(10)
+
+          RowLayout {
+            Layout.fillWidth: true
+            Text {
+              text: "MCP MANAGER"
+              color: root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+            Item { Layout.fillWidth: true }
+            Text { text: Model.summary(backend.data); color: Qt.alpha(root.foreground, 0.72); font.family: Style.font.family; font.pixelSize: Style.font.caption }
+            Button { text: "?"; focusable: true; onClicked: root.helpOpen = !root.helpOpen }
+          }
+
+          StatusBanner { Layout.fillWidth: true; message: backend.statusMessage; warning: backend.statusWarning; foreground: root.foreground }
+
+          ComparisonMatrix { visible: root.compareOpen; comparison: backend.comparison; foreground: root.foreground; onClosed: root.compareOpen = false }
+          ConversionPreview { visible: !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: backend.conversionPreview = null }
+
+          RowLayout {
+            Layout.fillWidth: true
+            TextField {
+              id: searchField
+              Layout.fillWidth: true
+              placeholderText: "Search agents, sources, servers, diagnostics…"
+              text: root.query
+              onTextChanged: { root.query = text; root.selectedServerIndex = 0 }
+              focusable: true
+            }
+            Button { text: root.filter === "all" ? "All" : root.filter; focusable: true; onClicked: root.filter = root.filter === "all" ? "enabled" : root.filter === "enabled" ? "issues" : root.filter === "issues" ? "disabled" : "all" }
+          }
+
+          Loader {
+            Layout.fillWidth: true
+            active: root.helpOpen
+            sourceComponent: Component {
+              Rectangle {
+                width: parent ? parent.width : 0
+                implicitHeight: helpColumn.implicitHeight + Style.space(16)
+                color: Qt.alpha(root.foreground, 0.06)
+                radius: Style.cornerRadius
+                ColumnLayout {
+                  id: helpColumn
+                  anchors.fill: parent
+                  anchors.margins: Style.space(8)
+                  Repeater {
+                    model: Model.keyHelp()
+                    RowLayout {
+                      required property var modelData
+                      Layout.fillWidth: true
+                      Text { text: modelData.key; color: Color.accent; font.family: "monospace"; font.pixelSize: Style.font.caption; Layout.preferredWidth: Style.space(90) }
+                      Text { text: modelData.label; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          StackLayout {
+            Layout.fillWidth: true
+            currentIndex: root.mode === "wide" ? 0 : 1
+            RowLayout {
+              spacing: Style.space(10)
+              AgentRail { Layout.preferredWidth: Style.space(180); agents: root.agents; selectedIndex: root.selectedAgentIndex; foreground: root.foreground; onSelected: root.selectAgent(index) }
+              ColumnLayout {
+                Layout.fillWidth: true
+                Text { text: root.selectedAgent ? String(root.selectedAgent.name) : "No configured agents"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.subtitle; font.bold: true }
+                Text { Layout.fillWidth: true; text: root.selectedAgent ? String(root.selectedAgent.notes || "") : "Discovery is allowlisted and local-only."; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap }
+                Repeater {
+                  model: root.sources
+                  SourceCard { required property var modelData; required property int index; source: modelData; selected: index === root.selectedSourceIndex; foreground: root.foreground; onChosen: { root.selectedSourceIndex = index; root.selectedServerIndex = 0 } }
+                }
+                Text { visible: root.sources.length === 0; text: "No known source exists yet."; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption }
+              }
+            }
+            ColumnLayout {
+              Layout.fillWidth: true
+              Text { text: root.selectedAgent ? String(root.selectedAgent.name) : "No configured agents"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.subtitle; font.bold: true }
+              Flow { Layout.fillWidth: true; spacing: Style.space(5); Repeater { model: root.agents; AgentCard { required property var modelData; required property int index; agent: modelData; selected: index === root.selectedAgentIndex; foreground: root.foreground; Layout.preferredWidth: Style.space(150); onChosen: root.selectAgent(index) } } }
+              Repeater { model: root.sources; SourceCard { required property var modelData; required property int index; source: modelData; selected: index === root.selectedSourceIndex; foreground: root.foreground; onChosen: { root.selectedSourceIndex = index; root.selectedServerIndex = 0 } } }
+            }
+          }
+
+          RowLayout {
+            Layout.fillWidth: true
+            Text { text: root.selectedSource ? String(root.selectedSource.pathDisplay || "Source") : "Choose a source"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true; elide: Text.ElideMiddle; Layout.fillWidth: true }
+            DiagnosticBadge { label: root.selectedSource ? Model.badgeForSource(root.selectedSource) : "No source"; severity: root.selectedSource && root.selectedSource.status === "malformed" ? "error" : "info"; foreground: root.foreground }
+          }
+
+          ColumnLayout {
+            Layout.fillWidth: true
+            visible: !root.editorOpen && !root.importOpen
+            Repeater {
+              model: root.servers
+              ServerRow { required property var modelData; required property int index; server: modelData; selected: index === root.selectedServerIndex; foreground: root.foreground; onEditRequested: root.prepareEdit(); onToggleRequested: root.prepareToggle(); onRemoveRequested: root.prepareRemove() }
+            }
+            EmptyState { visible: root.servers.length === 0; title: root.selectedSource ? "No servers in this source" : "No source selected"; description: root.selectedSource ? "Add a server when this source is writable, or import an explicit JSON, JSONC, or Codex TOML file." : "Select an agent and source to inspect its MCP definitions."; foreground: root.foreground }
+          }
+
+          ServerEditor { visible: root.editorOpen; server: root.editingServer; sourceId: root.selectedSource ? String(root.selectedSource.sourceId) : ""; foreground: root.foreground; onSaveRequested: root.editorSave(value); onCancelled: root.editorOpen = false }
+
+          ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.run(["import-register", "--path", path, "--adapter", adapter, "--mode", mode], "scan") }; onCancelled: root.importOpen = false }
+
+          RowLayout {
+            Layout.fillWidth: true
+            Button { text: "Add"; focusable: true; onClicked: root.prepareAdd() }
+            Button { text: "Edit"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareEdit() }
+            Button { text: root.selectedServer && root.selectedServer.enabled ? "Disable" : "Enable"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareToggle() }
+            Button { text: "Remove"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareRemove() }
+            Button { text: "Import"; focusable: true; onClicked: root.importOpen = true }
+            Item { Layout.fillWidth: true }
+            Button { text: "Compare"; focusable: true; onClicked: { root.compareOpen = true; backend.compare() } }
+            Button { text: "Copy preview → " + root.conversionTarget; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource; onClicked: backend.convertPreview(String(root.selectedSource.sourceId), String(root.selectedServer.name), root.conversionTarget) }
+            Button { text: "Doctor"; focusable: true; onClicked: backend.run(["doctor"], "doctor") }
+            Button { text: "Refresh"; focusable: true; onClicked: root.refresh() }
+          }
+
+          ConfirmSheet {
+            visible: !!backend.pendingPlan
+            preview: backend.pendingPlan ? backend.pendingPlan.preview : null
+            title: root.pendingAction === "remove-server" ? "Remove server?" : "Apply MCP change?"
+            foreground: root.foreground
+            onCancelled: backend.pendingPlan = null
+            onConfirmed: backend.applyPending()
+          }
+        }
+      }
+    }
+  }
+}
