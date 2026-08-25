@@ -314,8 +314,9 @@ Panel {
           }
 
           Flow {
+            id: globalTools
             Layout.fillWidth: true
-            Layout.preferredHeight: Style.space(38)
+            Layout.preferredHeight: Math.max(Style.space(38), childrenRect.height)
             Layout.minimumHeight: Style.space(38)
             spacing: Style.space(5)
             Button { text: "Import"; focusable: true; onClicked: root.importOpen = true }
@@ -442,8 +443,9 @@ Panel {
           }
 
           Flow {
+            id: sourceActions
             Layout.fillWidth: true
-            Layout.preferredHeight: Style.space(38)
+            Layout.preferredHeight: Math.max(Style.space(38), childrenRect.height)
             Layout.minimumHeight: Style.space(38)
             spacing: Style.space(5)
             Button { text: "Add"; focusable: true; enabled: !!(root.selectedSource && root.selectedSource.writable); onClicked: root.prepareAdd() }
