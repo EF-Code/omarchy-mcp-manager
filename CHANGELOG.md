@@ -2,6 +2,13 @@
 
 All notable changes to MCP Manager are documented here.
 
+## [1.0.5] - 2026-08-25
+
+- Renamed the aggregate issue count to static diagnostics and made the header
+  summary and Doctor button open a contextual, redacted diagnostics view.
+- Made Import, Compare, Doctor, History, Help, editor, and copy-preview views
+  mutually exclusive so opening one closes the previous utility view.
+
 ## [1.0.4] - 2026-08-25
 
 - Clarified cross-agent copying by labeling the selector as the copy

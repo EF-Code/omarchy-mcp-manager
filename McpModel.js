@@ -107,7 +107,75 @@ function summary(data) {
   var agents = Number(stats.agents || agentsFrom(data).length)
   var servers = Number(stats.servers || serverCount(data))
   var issues = Number(stats.issues || diagnosticCount(data))
-  return agents + " agent" + (agents === 1 ? "" : "s") + " · " + servers + " server" + (servers === 1 ? "" : "s") + " · " + issues + " issue" + (issues === 1 ? "" : "s")
+  return agents + " agent" + (agents === 1 ? "" : "s") + " · " + servers + " server" + (servers === 1 ? "" : "s") + " · " + issues + " diagnostic" + (issues === 1 ? "" : "s")
+}
+
+function diagnosticGuidance(code) {
+  var messages = {
+    "url-credential": "Prefer an environment-variable reference instead of credentials or sensitive query data in the URL.",
+    "literal-environment": "The value is hidden. Move credentials to an environment-variable reference when the agent supports it.",
+    "relative-cwd": "Use an absolute working-directory path so behavior does not depend on where the agent starts.",
+    "relative-command": "Use an absolute executable path or a command resolved directly through PATH.",
+    "command-missing": "Install or correct the executable outside MCP Manager, then refresh this static scan.",
+    "environment-missing": "Define the named environment variable before starting the agent.",
+    "cross-agent-drift": "Use Compare to review how this server differs across agents.",
+    "precedence-duplicate": "Review source precedence to confirm which definition the agent will use.",
+    "malformed-config": "Repair the file's MCP syntax or schema before it can be managed.",
+    "duplicate-server": "Remove or rename the duplicate definition.",
+    "literal-secret": "Move the hidden credential to an environment-variable reference.",
+    "invalid-url": "Use a complete http:// or https:// URL.",
+    "unsupported-transport": "Use a transport supported by this agent adapter.",
+    "unsafe-permissions": "Correct ownership or permissions outside MCP Manager before editing.",
+    "cwd-missing": "Choose an existing working directory.",
+    "sse-legacy": "Confirm the agent still requires the legacy SSE transport."
+  }
+  return messages[String(code || "")] || "Review this configuration finding before making changes."
+}
+
+function diagnosticEntries(data) {
+  var entries = []
+  function add(diag, agentName, sourceName, serverName) {
+    if (!diag) return
+    entries.push({
+      code: String(diag.code || "diagnostic"),
+      label: String(diag.label || diag.code || "Diagnostic"),
+      severity: String(diag.severity || "info"),
+      agentName: String(agentName || "General"),
+      sourceName: String(sourceName || ""),
+      serverName: String(serverName || ""),
+      guidance: diagnosticGuidance(diag.code)
+    })
+  }
+  ;(data && Array.isArray(data.diagnostics) ? data.diagnostics : []).forEach(function(diag) {
+    add(diag, "General", "", "")
+  })
+  agentsFrom(data).forEach(function(agent) {
+    sourcesFrom(agent).forEach(function(source) {
+      var serverCounts = {}
+      ;(source.servers || []).forEach(function(server) {
+        ;(server.diagnostics || []).forEach(function(diag) {
+          var signature = String(diag.severity || "info") + "\u0000" + String(diag.code || "") + "\u0000" + String(diag.label || "")
+          serverCounts[signature] = Number(serverCounts[signature] || 0) + 1
+          add(diag, agent.name, source.pathDisplay, server.name)
+        })
+      })
+      ;(source.diagnostics || []).forEach(function(diag) {
+        var signature = String(diag.severity || "info") + "\u0000" + String(diag.code || "") + "\u0000" + String(diag.label || "")
+        if (serverCounts[signature] > 0) {
+          serverCounts[signature] -= 1
+          return
+        }
+        add(diag, agent.name, source.pathDisplay, "")
+      })
+    })
+  })
+  var rank = { error: 0, warning: 1, info: 2 }
+  entries.sort(function(a, b) {
+    var severity = Number(rank[a.severity] === undefined ? 3 : rank[a.severity]) - Number(rank[b.severity] === undefined ? 3 : rank[b.severity])
+    if (severity !== 0) return severity
+    return (a.agentName + a.sourceName + a.serverName + a.label).localeCompare(b.agentName + b.sourceName + b.serverName + b.label)
+  })
+  return entries
 }
 
 function keyHelp() {
@@ -172,7 +240,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     parseResponse, agentsFrom, sourcesFrom, serversFrom, diagnosticCount,
     serverCount, wrapIndex, nextIndex, clampedIndex, responsiveMode, badgeForSource,
-    badgeForAgent, diffLines, summary, keyHelp, duplicatePayload,
+    badgeForAgent, diffLines, summary, diagnosticGuidance, diagnosticEntries, keyHelp, duplicatePayload,
     writableAgentIds, agentNameById, historyForSource
   }
 }

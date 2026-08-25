@@ -26,6 +26,8 @@ Panel {
   property bool importOpen: false
   property bool compareOpen: false
   property bool historyOpen: false
+  property bool diagnosticsOpen: false
+  property bool conversionOpen: false
   property var editingServer: null
   property string pendingForgetSourceId: ""
   property string pendingAction: ""
@@ -84,6 +86,53 @@ Panel {
     Qt.callLater(function() { popoutSwitchClosing = false })
   }
   function refresh() { backend.refresh() }
+
+  function closeUtilityViews() {
+    helpOpen = false
+    editorOpen = false
+    importOpen = false
+    compareOpen = false
+    historyOpen = false
+    diagnosticsOpen = false
+    conversionOpen = false
+    backend.conversionPreview = null
+  }
+
+  function showImport() {
+    closeUtilityViews()
+    importOpen = true
+  }
+
+  function showComparison() {
+    closeUtilityViews()
+    compareOpen = true
+    backend.compare()
+  }
+
+  function showDiagnostics() {
+    closeUtilityViews()
+    diagnosticsOpen = true
+    backend.run(["doctor"], "doctor")
+  }
+
+  function showHistory() {
+    closeUtilityViews()
+    historyOpen = true
+    backend.loadHistory()
+  }
+
+  function showConversionPreview() {
+    if (!selectedServer || !selectedSource || conversionTargets.length === 0) return
+    closeUtilityViews()
+    conversionOpen = true
+    backend.convertPreview(String(selectedSource.sourceId), String(selectedServer.name), conversionTarget)
+  }
+
+  function toggleHelp() {
+    var opening = !helpOpen
+    closeUtilityViews()
+    helpOpen = opening
+  }
 
   function selectAgent(index) {
     if (agents.length === 0) return
@@ -159,9 +208,9 @@ Panel {
       backend.statusMessage = "Choose a writable source before adding a server"
       return
     }
+    closeUtilityViews()
     editingServer = null
     editorOpen = true
-    helpOpen = false
   }
 
   function prepareEdit() {
@@ -169,9 +218,9 @@ Panel {
       backend.statusMessage = "This server is read-only"
       return
     }
+    closeUtilityViews()
     editingServer = selectedServer
     editorOpen = true
-    helpOpen = false
   }
 
   function editorSave(value) {
@@ -198,15 +247,15 @@ Panel {
     else if (value === "u") prepareDuplicate()
     else if (value === "s") prepareToggle()
     else if (value === "d" || value === "x") prepareRemove()
-    else if (value === "i") importOpen = true
-    else if (value === "c") { compareOpen = true; backend.compare() }
-    else if (value === "o") backend.run(["doctor"], "doctor")
-    else if (value === "y") { historyOpen = true; backend.loadHistory() }
+    else if (value === "i") showImport()
+    else if (value === "c") showComparison()
+    else if (value === "o") showDiagnostics()
+    else if (value === "y") showHistory()
     else if (value === "[") selectSource(selectedSourceIndex - 1)
     else if (value === "]") selectSource(selectedSourceIndex + 1)
     else if (value === "t") cycleConversionTarget()
-    else if (value === "p" && selectedServer && selectedSource) backend.convertPreview(String(selectedSource.sourceId), String(selectedServer.name), conversionTarget)
-    else if (value === "?" || value === "h") helpOpen = !helpOpen
+    else if (value === "p") showConversionPreview()
+    else if (value === "?" || value === "h") toggleHelp()
     else if (value === "/") searchField.forceActiveFocus()
   }
 
@@ -219,6 +268,8 @@ Panel {
       importOpen = false
       compareOpen = false
       historyOpen = false
+      diagnosticsOpen = false
+      conversionOpen = false
       helpOpen = false
       backend.pendingPlan = null
       pendingForgetSourceId = ""
@@ -243,7 +294,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      blocked: searchField.activeFocus || editorOpen || importOpen || historyOpen || compareOpen || !!backend.conversionPreview || !!backend.pendingPlan || pendingForgetSourceId !== ""
+      blocked: searchField.activeFocus || editorOpen || importOpen || historyOpen || compareOpen || diagnosticsOpen || conversionOpen || !!backend.pendingPlan || pendingForgetSourceId !== ""
       onMoveRequested: function(dx, dy) { root.moveCursor(dx, dy) }
       onReturnRequested: root.keyboardReturnPending = true
       onActivateRequested: {
@@ -285,8 +336,8 @@ Panel {
               font.bold: true
             }
             Item { Layout.fillWidth: true }
-            Text { text: Model.summary(backend.data); color: Qt.alpha(root.foreground, 0.72); font.family: Style.font.family; font.pixelSize: Style.font.caption }
-            Button { text: "?"; focusable: true; onClicked: root.helpOpen = !root.helpOpen }
+            Button { text: Model.summary(backend.data); tooltipText: "Open static diagnostics"; focusable: true; onClicked: root.showDiagnostics() }
+            Button { text: "?"; focusable: true; onClicked: root.toggleHelp() }
           }
 
           StatusBanner { Layout.fillWidth: true; message: backend.statusMessage; warning: backend.statusWarning; foreground: root.foreground }
@@ -313,7 +364,8 @@ Panel {
           }
 
           ComparisonMatrix { visible: root.compareOpen; comparison: backend.comparison; foreground: root.foreground; onClosed: root.compareOpen = false }
-          ConversionPreview { visible: !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: backend.conversionPreview = null }
+          DiagnosticsSheet { visible: root.diagnosticsOpen; data: backend.data; foreground: root.foreground; onClosed: root.diagnosticsOpen = false }
+          ConversionPreview { visible: root.conversionOpen && !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: { root.conversionOpen = false; backend.conversionPreview = null } }
           HistorySheet {
             visible: root.historyOpen
             entries: backend.historyEntries
@@ -346,13 +398,13 @@ Panel {
             Layout.preferredHeight: Math.max(Style.space(38), childrenRect.height)
             Layout.minimumHeight: Style.space(38)
             spacing: Style.space(5)
-            Button { text: "Import"; focusable: true; onClicked: root.importOpen = true }
-            Button { text: "Compare"; focusable: true; onClicked: { root.compareOpen = true; backend.compare() } }
-            Button { text: "Doctor"; focusable: true; onClicked: backend.run(["doctor"], "doctor") }
-            Button { text: "History"; focusable: true; enabled: !!root.selectedSource; onClicked: { root.historyOpen = true; backend.loadHistory() } }
+            Button { text: "Import"; focusable: true; onClicked: root.showImport() }
+            Button { text: "Compare"; focusable: true; onClicked: root.showComparison() }
+            Button { text: "Doctor"; tooltipText: "Open static diagnostics"; focusable: true; onClicked: root.showDiagnostics() }
+            Button { text: "History"; focusable: true; enabled: !!root.selectedSource; onClicked: root.showHistory() }
             Button { text: "Refresh"; focusable: true; onClicked: root.refresh() }
             Button { text: "Copy to: " + root.conversionTargetName; tooltipText: "Destination agent; click to choose the next available destination"; focusable: true; enabled: root.conversionTargets.length > 0; onClicked: root.cycleConversionTarget() }
-            Button { text: "Preview copy"; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource && root.conversionTargets.length > 0; onClicked: backend.convertPreview(String(root.selectedSource.sourceId), String(root.selectedServer.name), root.conversionTarget) }
+            Button { text: "Preview copy"; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource && root.conversionTargets.length > 0; onClicked: root.showConversionPreview() }
           }
 
           SectionDivider { label: "AGENTS & SOURCES"; foreground: root.foreground }
