@@ -76,8 +76,8 @@ paths, labels, commands, configuration values, or credentials.
 
 Runtime dependencies are Omarchy Quattro/Quickshell and a portable Python 3
 standard library interpreter. Node.js is used only by the JavaScript model
-tests. No package manager, network service, install hook, sudo, or external
-runtime library is required.
+tests. No package manager, network service, install hook, elevated access, or
+external runtime library is required.
 
 To remove the plugin without touching agent configuration:
 
