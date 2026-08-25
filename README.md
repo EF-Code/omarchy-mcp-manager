@@ -105,12 +105,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and
 Static validation, automated tests, live local
 Omarchy interaction, and externally verified compatibility are separate
 evidence levels; this repository does not claim more than it has tested.
-
-## Marketplace review draft
-
-Candidate title: `[Plugin]: MCP Manager`  
-Category: `Developer Tools`  
-Tags: `ai`, `bar`, `quickshell`  
-Suggested missing tag: `mcp`
-
-The active submission is [marketplace issue #2315](https://github.com/HANCORE-linux/omarchy-plugin-marketplace/issues/2315).
