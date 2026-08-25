@@ -9,7 +9,7 @@ agent without explicit approval.
 - Category: `Developer Tools`
 - Tags: `ai`, `bar`, `quickshell`
 - Suggested missing tag: `mcp`
-- Candidate commit: fill after final release commit
+- Candidate commit: use the exact reviewed commit from the release handoff
 
 ## Issue body
 
@@ -27,6 +27,11 @@ Supported writes use redacted previews, source fingerprints, owner-only locks,
 atomic replacement, bounded backups, readback verification, and drift refusal.
 Unsupported or malformed sources remain visible with explicit read-only
 diagnostics.
+
+Version 1.0.2 was exercised in the real Omarchy 4.0.0-1 shell on Hyprland
+workspace 3. The live scan displayed 10 configured agents and 12 redacted MCP
+servers; keyboard agent navigation and the OpenCode editor were verified
+without applying a mutation.
 
 ## Owner checklist
 

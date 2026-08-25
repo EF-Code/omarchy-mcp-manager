@@ -41,7 +41,7 @@ omarchy plugin enable io.github.ef-code.mcp-manager right
 The first scan is read-only. Click the bar icon to open the anchored panel. The
 right mouse button refreshes discovery. Use `h`/`l` for agents, `j`/`k` for
 servers, `[`/`]` for sources, `/` for search, `r` to refresh, `?` for help,
-and Escape to close.
+Enter to edit, Space to preview enable/disable, and Escape to close.
 
 ## Editing, imports, and recovery
 
@@ -55,6 +55,11 @@ through the helper.
 Manual imports are explicit. Register read-only for the safest inspection, or
 choose manage-in-place only for the exact file after reviewing the warning.
 MCP Manager stores the path and authorization mode, never the file contents.
+
+User-owned regular files with overly broad permissions remain visible through
+the redacted read-only model so the problem can be diagnosed. Editing stays
+disabled until the source file and its containing directory are owner-only;
+MCP Manager never silently changes permissions during discovery.
 
 ## Static diagnostics are not health checks
 
