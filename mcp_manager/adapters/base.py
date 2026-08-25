@@ -31,6 +31,7 @@ class Adapter:
     candidate_builder: Callable[[dict[str, Path]], tuple[SourceSpec, ...]]
     mcp_path_selector: Callable[[dict[str, Any], str], list[str] | None]
     notes: str
+    default_mcp_path: tuple[str, ...] = ()
 
     @property
     def can_write(self) -> bool:
@@ -185,6 +186,8 @@ def parse_source(adapter: Adapter, text: str, path: Path) -> dict[str, Any]:
             raise ValueError("TOML is not supported by this adapter")
         data = toml_source.parse(text)
         mcp_path = adapter.mcp_path_selector(data, str(path))
+        if not mcp_path and adapter.default_mcp_path:
+            mcp_path = list(adapter.default_mcp_path)
         if not mcp_path:
             raise ValueError("recognized MCP table is missing")
         entries = _json_entry(data, mcp_path)
@@ -199,6 +202,8 @@ def parse_source(adapter: Adapter, text: str, path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("JSON root is not an object")
     mcp_path = adapter.mcp_path_selector(data, str(path))
+    if not mcp_path and adapter.default_mcp_path:
+        mcp_path = list(adapter.default_mcp_path)
     if not mcp_path:
         raise ValueError("recognized MCP object is missing")
     entries = _json_entry(data, mcp_path)
@@ -227,22 +232,49 @@ def writer_supported(adapter: Adapter, text: str, path: Path, parsed: dict[str, 
 
 def patch_source(adapter: Adapter, text: str, path: Path, *, action: str, name: str, payload: dict[str, Any]) -> str:
     parsed = parse_source(adapter, text, path)
+    payload = _adapter_payload(adapter, parsed, action, name, payload)
     if parsed["format"] == "toml":
         return toml_source.apply_operation(text, action=action, name=name, payload=payload)
     return json_source.apply_operation(text, jsonc=parsed["format"] == "jsonc", mcp_path=parsed["mcpPath"], action=action, name=name, payload=payload)
 
 
-def _adapter(id_: str, name: str, executables: tuple[str, ...], capability: str, formats: tuple[str, ...], builder: Callable, selector: Callable, notes: str) -> Adapter:
-    return Adapter(id_, name, executables, capability, formats, builder, selector, notes)
+def _adapter_payload(
+    adapter: Adapter,
+    parsed: dict[str, Any],
+    action: str,
+    name: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Translate normalized editor fields without rewriting unrelated data."""
+
+    result = dict(payload)
+    if adapter.id != "opencode" or action not in {"upsert-server", "duplicate-server"}:
+        return result
+    existing = parsed.get("servers", {}).get(name, {})
+    existing_type = str(existing.get("type", "")) if isinstance(existing, dict) else ""
+    if isinstance(result.get("command"), str):
+        command = result.pop("command")
+        args = result.pop("args", [])
+        result["command"] = [command, *(args if isinstance(args, list) else [])]
+        result.setdefault("type", existing_type if existing_type == "local" else "local")
+        if "env" in result and "environment" not in result:
+            result["environment"] = result.pop("env")
+    elif any(key in result for key in ("url", "serverUrl", "serverURL", "endpoint")):
+        result.setdefault("type", existing_type if existing_type == "remote" else "remote")
+    return result
+
+
+def _adapter(id_: str, name: str, executables: tuple[str, ...], capability: str, formats: tuple[str, ...], builder: Callable, selector: Callable, notes: str, default_mcp_path: tuple[str, ...] = ()) -> Adapter:
+    return Adapter(id_, name, executables, capability, formats, builder, selector, notes, default_mcp_path)
 
 
 _ADAPTERS = (
-    _adapter("codex", "Codex", ("codex",), "read-write", ("toml",), _codex_specs, _codex_path, "Targeted mcp_servers TOML table-family edits."),
+    _adapter("codex", "Codex", ("codex",), "read-write", ("toml",), _codex_specs, _codex_path, "Targeted mcp_servers TOML table-family edits.", ("mcp_servers",)),
     _adapter("claude", "Claude Code", ("claude",), "read-write", ("json", "jsonc"), _claude_specs, _claude_path, "Project .mcp.json writes; user state is sensitive and read-only."),
-    _adapter("opencode", "OpenCode", ("opencode",), "read-write", ("json", "jsonc"), _opencode_specs, _opencode_path, "Preserves legacy mcp and v2 mcp.servers shapes."),
-    _adapter("gemini", "Gemini CLI", ("gemini", "gemini-cli"), "read-write", ("json", "jsonc"), _gemini_specs, _json_path, "Targeted mcpServers edits; policy fields remain visible."),
+    _adapter("opencode", "OpenCode", ("opencode",), "read-write", ("json", "jsonc"), _opencode_specs, _opencode_path, "Preserves legacy mcp and v2 mcp.servers shapes.", ("mcp", "servers")),
+    _adapter("gemini", "Gemini CLI", ("gemini", "gemini-cli"), "read-write", ("json", "jsonc"), _gemini_specs, _json_path, "Targeted mcpServers edits; policy fields remain visible.", ("mcpServers",)),
     _adapter("antigravity", "Antigravity", ("agy", "antigravity"), "read-write", ("json", "jsonc"), _antigravity_specs, _antigravity_path, "Ordered version-tolerant candidates; preserves detected field spelling."),
-    _adapter("copilot", "GitHub Copilot CLI", ("copilot", "gh-copilot"), "read-write", ("json", "jsonc"), _copilot_specs, _json_path, "User and project precedence are shown separately."),
+    _adapter("copilot", "GitHub Copilot CLI", ("copilot", "gh-copilot"), "read-write", ("json", "jsonc"), _copilot_specs, _json_path, "User and project precedence are shown separately.", ("mcpServers",)),
     _adapter("crush", "Crush", ("crush",), "read-only", ("json", "jsonc"), _crush_specs, _json_path, "crushrc is executable configuration and is never evaluated or rewritten."),
     _adapter("pi", "Pi", ("pi",), "read-only", ("json", "jsonc"), _pi_specs, _json_path, "Detected for explanation; native MCP writer is not advertised."),
     _adapter("omp", "OMP", ("omp",), "read-only", ("json", "jsonc"), _omp_specs, _generic_path, "Implementation-specific; detection and explanation only."),

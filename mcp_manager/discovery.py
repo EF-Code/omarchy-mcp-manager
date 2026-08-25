@@ -132,7 +132,10 @@ def _source_record(adapter: Adapter, spec: SourceSpec, source_id: str, default_i
             record["status"] = "missing"
         return record, {"path": spec.path, "record": record}
     try:
-        data, info = read_bytes(spec.path)
+        # Discovery may inspect an overly broad but user-owned regular file so
+        # users can see and diagnose its redacted MCP definitions. Mutation
+        # safety remains strict and is evaluated independently below.
+        data, info = read_bytes(spec.path, require_private_permissions=False)
         text = decode_source(data)
         record["exists"] = True
         file_meta = metadata(info, data)
@@ -145,12 +148,33 @@ def _source_record(adapter: Adapter, spec: SourceSpec, source_id: str, default_i
             server["diagnostics"] = server_diagnostics(server)
         if not deep_limit(parsed["data"]):
             raise ValueError("configuration exceeds nesting or string limits")
+        permission_error = ""
+        try:
+            validate_path(spec.path, allow_missing=False)
+        except UnsafePathError as exc:
+            permission_error = sanitize_text(str(exc))[:256]
         record["status"] = "managed" if record["managed"] else ("imported" if spec.imported else "ready")
+        if permission_error:
+            record["status"] = "unsafe"
+            record["diagnostics"].append({
+                "code": "unsafe-permissions",
+                "severity": "error",
+                "label": permission_error + "; definitions are visible but editing is blocked",
+            })
         record["diagnostics"] = source_diagnostics(record)
         adapter_writable = writer_supported(adapter, text, spec.path, parsed) and not (adapter.id == "claude" and spec.scope == "user")
-        record["writable"] = bool(adapter_writable and (not spec.imported or spec.import_mode == "manage"))
+        record["writable"] = bool(
+            not permission_error
+            and adapter_writable
+            and (not spec.imported or spec.import_mode == "manage")
+        )
         if not record["writable"]:
-            label = "Read-only source" if adapter_writable or not adapter.can_write else "Schema is readable but not safely patchable"
+            label = (
+                "Editing is blocked until source permissions are private"
+                if permission_error
+                else "Read-only source" if adapter_writable or not adapter.can_write
+                else "Schema is readable but not safely patchable"
+            )
             record["diagnostics"].append({"code": "read-only", "severity": "info", "label": label})
         if spec.imported:
             record["diagnostics"].append({"code": "explicit-import", "severity": "info", "label": "Explicitly imported source"})

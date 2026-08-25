@@ -119,9 +119,18 @@ def redact_headers(value: object) -> list[dict[str, object]]:
 
 def normalized_server(name: object, raw: object, *, source_id: str = "") -> dict[str, object]:
     entry = raw if isinstance(raw, dict) else {}
-    command, args = redact_command(entry.get("command"), entry.get("args", []))
+    raw_command = entry.get("command")
+    raw_args = entry.get("args", [])
+    if isinstance(raw_command, list):
+        raw_args = raw_command[1:]
+        raw_command = raw_command[0] if raw_command else None
+    command, args = redact_command(raw_command, raw_args)
     url = entry.get("url", entry.get("serverUrl", entry.get("serverURL", entry.get("endpoint"))))
     transport = str(entry.get("transport", entry.get("type", "stdio" if command else "http" if url else "unknown"))).lower()
+    if transport == "local":
+        transport = "stdio"
+    elif transport == "remote":
+        transport = "http"
     if transport in {"streamable_http", "streamable-http"}:
         transport = "http"
     enabled = not bool(entry.get("disabled", False))

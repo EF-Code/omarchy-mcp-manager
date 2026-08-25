@@ -365,6 +365,8 @@ def can_write(source: str) -> bool:
 
     root = parse(source)
     servers = root.get("mcp_servers")
+    if servers is None:
+        return True
     if not isinstance(servers, dict):
         return False
     headers = table_headers(source)
@@ -391,6 +393,8 @@ def can_write(source: str) -> bool:
 def apply_operation(source: str, *, action: str, name: str, payload: dict[str, Any]) -> str:
     root = parse(source)
     servers = root.get("mcp_servers")
+    if servers is None and action == "upsert-server":
+        servers = {}
     if not isinstance(servers, dict):
         raise TomlSourceError("Codex mcp_servers table is missing or unsupported")
     newline = "\r\n" if "\r\n" in source else "\n"

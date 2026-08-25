@@ -84,7 +84,13 @@ def _check_components(path: Path, allow_missing: bool) -> None:
             raise UnsafePathError("path component is not a directory")
 
 
-def validate_path(path: str | Path, *, allow_missing: bool = False, source: bool = True) -> Path:
+def validate_path(
+    path: str | Path,
+    *,
+    allow_missing: bool = False,
+    source: bool = True,
+    require_private_permissions: bool = True,
+) -> Path:
     candidate = _absolute(path)
     if source and _system_path(candidate):
         raise UnsafePathError("system paths are not accepted")
@@ -97,19 +103,33 @@ def validate_path(path: str | Path, *, allow_missing: bool = False, source: bool
             raise UnsafePathError("source is not a regular file")
         if source and info.st_uid != os.getuid():
             raise UnsafePathError("source is not owned by the current user")
-        if source and stat.S_IMODE(info.st_mode) & 0o022:
+        if source and require_private_permissions and stat.S_IMODE(info.st_mode) & 0o022:
             raise UnsafePathError("source permissions are too broad")
     parent = candidate.parent
     if not parent.exists() or not parent.is_dir():
         raise UnsafePathError("parent directory is unavailable")
     parent_info = os.lstat(parent)
-    if not stat.S_ISDIR(parent_info.st_mode) or parent_info.st_uid != os.getuid() or parent_info.st_mode & 0o022:
+    if (
+        not stat.S_ISDIR(parent_info.st_mode)
+        or parent_info.st_uid != os.getuid()
+        or (require_private_permissions and parent_info.st_mode & 0o022)
+    ):
         raise UnsafePathError("parent directory ownership or mode is unsafe")
     return candidate
 
 
-def read_bytes(path: str | Path, *, max_size: int = MAX_FILE_SIZE) -> tuple[bytes, os.stat_result]:
-    candidate = validate_path(path, allow_missing=False)
+def read_bytes(
+    path: str | Path,
+    *,
+    max_size: int = MAX_FILE_SIZE,
+    require_private_permissions: bool = True,
+) -> tuple[bytes, os.stat_result]:
+    candidate = validate_path(
+        path,
+        allow_missing=False,
+        require_private_permissions=require_private_permissions,
+    )
+    before = os.lstat(candidate)
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = os.open(candidate, flags)
@@ -119,6 +139,8 @@ def read_bytes(path: str | Path, *, max_size: int = MAX_FILE_SIZE) -> tuple[byte
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
             raise UnsafePathError("source changed ownership or type")
+        if (info.st_dev, info.st_ino) != (before.st_dev, before.st_ino):
+            raise UnsafePathError("source changed while opening")
         if info.st_size > max_size:
             raise UnsafePathError("source is too large")
         chunks: list[bytes] = []

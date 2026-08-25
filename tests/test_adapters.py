@@ -29,6 +29,40 @@ class AdapterTests(unittest.TestCase):
         parsed = parse_source(adapter, changed, Path("settings.jsonc"))
         self.assertTrue(parsed["servers"]["alpha"]["disabled"])
 
+    def test_empty_known_configs_support_targeted_first_server_add(self):
+        opencode = adapter_by_id("opencode")
+        source = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n'
+        parsed = parse_source(opencode, source, Path("opencode.json"))
+        self.assertEqual(parsed["mcpPath"], ["mcp", "servers"])
+        changed = patch_source(
+            opencode,
+            source,
+            Path("opencode.json"),
+            action="upsert-server",
+            name="alpha",
+            payload={"name": "alpha", "command": "tool", "args": ["--safe"]},
+        )
+        entry = parse_source(opencode, changed, Path("opencode.json"))["servers"]["alpha"]
+        self.assertEqual(entry["type"], "local")
+        self.assertEqual(entry["command"], ["tool", "--safe"])
+
+        codex = adapter_by_id("codex")
+        toml = 'model = "example"\n'
+        self.assertEqual(parse_source(codex, toml, Path("config.toml"))["servers"], {})
+        changed_toml = patch_source(codex, toml, Path("config.toml"), action="upsert-server", name="alpha", payload={"command": "tool"})
+        self.assertEqual(parse_source(codex, changed_toml, Path("config.toml"))["servers"]["alpha"]["command"], "tool")
+
+    def test_opencode_command_array_normalizes_and_edits_without_schema_loss(self):
+        adapter = adapter_by_id("opencode")
+        source = '{"mcp":{"legacy":{"type":"local","command":["tool","--one"],"environment":{"KEEP":"$KEEP"},"enabled":true}}}'
+        parsed = parse_source(adapter, source, Path("opencode.json"))
+        server = normalized_servers(adapter, parsed, "src_test")[0]
+        self.assertEqual((server["transport"], server["command"], server["args"]), ("stdio", "tool", ["--one"]))
+        changed = patch_source(adapter, source, Path("opencode.json"), action="upsert-server", name="legacy", payload={"name": "legacy", "command": "other", "args": ["--two"]})
+        entry = parse_source(adapter, changed, Path("opencode.json"))["servers"]["legacy"]
+        self.assertEqual(entry["command"], ["other", "--two"])
+        self.assertEqual(entry["environment"], {"KEEP": "$KEEP"})
+
     def test_duplicate_keys_are_rejected(self):
         with self.assertRaises(DuplicateKeyError):
             loads('{"mcpServers": {}, "mcpServers": {}}')

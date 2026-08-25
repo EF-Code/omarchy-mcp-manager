@@ -295,6 +295,21 @@ def _existing_alias(node: Node, key: str) -> str:
 def apply_operation(source: str, *, jsonc: bool, mcp_path: list[str], action: str, name: str, payload: dict[str, Any]) -> str:
     root = parse(source, jsonc=jsonc)
     container = find_node(root, mcp_path)
+    if container is None and action == "upsert-server":
+        changed = source
+        for depth, key in enumerate(mcp_path):
+            changed_root = parse(changed, jsonc=jsonc)
+            parent = find_node(changed_root, mcp_path[:depth])
+            if parent is None or parent.kind != "object":
+                raise SourceParseError("recognized MCP object parent is missing or not an object")
+            child = find_node(changed_root, mcp_path[: depth + 1])
+            if child is None:
+                changed = object_add(changed, parent, key, {})
+            elif child.kind != "object":
+                raise SourceParseError("recognized MCP object parent is not an object")
+        source = changed
+        root = parse(source, jsonc=jsonc)
+        container = find_node(root, mcp_path)
     if container is None or container.kind != "object":
         raise SourceParseError("recognized MCP object is missing or not an object")
     existing_member = find_member(container, name)

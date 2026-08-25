@@ -38,16 +38,43 @@ class SecurityTests(unittest.TestCase):
             with self.assertRaises(UnsafePathError):
                 validate_path(real)
 
+    def test_broad_permissions_are_inspectable_but_not_mutable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            broad = root / "broad"
+            broad.mkdir(mode=0o777)
+            broad.chmod(0o777)
+            source = broad / "config.json"
+            source.write_text('{"mcpServers":{"visible":{"command":"tool"}}}\n', encoding="utf-8")
+            source.chmod(0o666)
+
+            data, info = read_bytes(source, require_private_permissions=False)
+
+            self.assertIn(b'"visible"', data)
+            self.assertEqual(info.st_uid, os.getuid())
+            with self.assertRaises(UnsafePathError):
+                read_bytes(source)
+
     def test_drift_refuses_write(self):
         with tempfile.TemporaryDirectory() as temp:
-            path = Path(temp) / "config.json"
+            root = Path(temp)
+            path = root / "config.json"
             path.write_text("old\n", encoding="utf-8")
-            old, info = read_bytes(path)
-            base = metadata(info, old)
-            path.write_text("external\n", encoding="utf-8")
-            with self.assertRaises(TransactionError):
-                commit("src-drift", path, b"new\n", base, operation_id="op-drift", history_entry={"action": "test"})
-            self.assertEqual(path.read_text(encoding="utf-8"), "external\n")
+            saved = {key: os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR")}
+            try:
+                os.environ.update({"XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "runtime")})
+                old, info = read_bytes(path)
+                base = metadata(info, old)
+                path.write_text("external\n", encoding="utf-8")
+                with self.assertRaises(TransactionError):
+                    commit("src-drift", path, b"new\n", base, operation_id="op-drift", history_entry={"action": "test"})
+                self.assertEqual(path.read_text(encoding="utf-8"), "external\n")
+            finally:
+                for key, value in saved.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
 
     def test_failpoint_rolls_back_to_valid_preimage(self):
         with tempfile.TemporaryDirectory() as temp:
