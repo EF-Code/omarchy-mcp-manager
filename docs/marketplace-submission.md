@@ -31,8 +31,9 @@ Version 1.1.0 was exercised in the real Omarchy 4.0.0-1 shell on Hyprland
 workspace 3. The live scan displayed 10 configured agents and 12 redacted MCP
 servers; the MCP bar mark, section hierarchy, reversible static-diagnostic
 ignores, keyboard agent navigation, OpenCode server selection, and the
-Codex-to-Antigravity copy planning flow were verified without applying an
-agent-configuration mutation.
+Codex-to-Antigravity copy preview, destination diff, verified apply, and exact
+backup restore were exercised. The target configuration was returned to its
+pre-test state.
 
 ## Owner checklist
 
