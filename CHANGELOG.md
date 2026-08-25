@@ -15,11 +15,13 @@ All notable changes to MCP Manager are documented here.
   the server list; added arguments and working-directory fields to the editor.
 - Fixed keyboard Space/Enter behavior and a runtime-only Qt Quick Controls
   import failure found during a clean shell restart on workspace 3.
-- Moved all mutation request objects from process arguments to a bounded stdin
-  protocol, preserving secret-bearing input outside `/proc` command lines.
+- Moved mutation, import, and conversion request objects from process arguments
+  to a bounded stdin protocol, preserving untrusted input outside `/proc`
+  command lines.
 - Preserved JSONC comments and member order during server renames, restricted
   Gemini discovery to its documented `mcpServers` object, and anchored source
-  access through no-follow directory-descriptor walks.
+  access through no-follow directory-descriptor walks with parent-identity
+  binding in every mutation plan.
 
 ## [1.0.1] - 2026-08-24
 
