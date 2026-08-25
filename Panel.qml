@@ -30,6 +30,7 @@ Panel {
   property string pendingForgetSourceId: ""
   property string pendingAction: ""
   property string conversionTarget: "codex"
+  property bool keyboardReturnPending: false
 
   property var backend: Controller { id: backendObject }
   readonly property var agents: Model.agentsFrom(backend.data)
@@ -238,7 +239,15 @@ Panel {
       anchors.fill: parent
       blocked: searchField.activeFocus || editorOpen || importOpen || historyOpen || compareOpen || !!backend.conversionPreview || !!backend.pendingPlan || pendingForgetSourceId !== ""
       onMoveRequested: function(dx, dy) { root.moveCursor(dx, dy) }
-      onActivateRequested: root.activate()
+      onReturnRequested: root.keyboardReturnPending = true
+      onActivateRequested: {
+        if (root.keyboardReturnPending) {
+          root.keyboardReturnPending = false
+          root.activate()
+        } else {
+          root.prepareToggle()
+        }
+      }
       onDeleteRequested: root.prepareRemove()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
@@ -304,6 +313,20 @@ Panel {
             Button { text: root.filter === "all" ? "All" : root.filter; focusable: true; onClicked: root.filter = root.filter === "all" ? "enabled" : root.filter === "enabled" ? "issues" : root.filter === "issues" ? "disabled" : "all" }
           }
 
+          Flow {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Style.space(38)
+            Layout.minimumHeight: Style.space(38)
+            spacing: Style.space(5)
+            Button { text: "Import"; focusable: true; onClicked: root.importOpen = true }
+            Button { text: "Compare"; focusable: true; onClicked: { root.compareOpen = true; backend.compare() } }
+            Button { text: "Doctor"; focusable: true; onClicked: backend.run(["doctor"], "doctor") }
+            Button { text: "History"; focusable: true; enabled: !!root.selectedSource; onClicked: { root.historyOpen = true; backend.loadHistory() } }
+            Button { text: "Refresh"; focusable: true; onClicked: root.refresh() }
+            Button { text: "Target: " + root.conversionTarget; focusable: true; onClicked: root.cycleConversionTarget() }
+            Button { text: "Copy preview"; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource && root.conversionTargets.length > 0; onClicked: backend.convertPreview(String(root.selectedSource.sourceId), String(root.selectedServer.name), root.conversionTarget) }
+          }
+
           Loader {
             Layout.fillWidth: true
             active: root.helpOpen
@@ -331,28 +354,84 @@ Panel {
             }
           }
 
-          StackLayout {
+          Loader {
             Layout.fillWidth: true
-            currentIndex: root.mode === "wide" ? 0 : 1
+            sourceComponent: root.mode === "wide" ? wideNavigation : compactNavigation
+          }
+
+          Component {
+            id: wideNavigation
             RowLayout {
               spacing: Style.space(10)
-              AgentRail { Layout.preferredWidth: Style.space(180); agents: root.agents; selectedIndex: root.selectedAgentIndex; foreground: root.foreground; onSelected: root.selectAgent(index) }
+              AgentRail {
+                Layout.preferredWidth: Style.space(180)
+                Layout.minimumWidth: Style.space(150)
+                Layout.maximumWidth: Style.space(190)
+                Layout.alignment: Qt.AlignTop
+                agents: root.agents
+                selectedIndex: root.selectedAgentIndex
+                foreground: root.foreground
+                onSelected: function(index) { root.selectAgent(index) }
+              }
               ColumnLayout {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.alignment: Qt.AlignTop
                 Text { text: root.selectedAgent ? String(root.selectedAgent.name) : "No configured agents"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.subtitle; font.bold: true }
                 Text { Layout.fillWidth: true; text: root.selectedAgent ? String(root.selectedAgent.notes || "") : "Discovery is allowlisted and local-only."; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap }
-                Repeater {
-                  model: root.sources
-                  SourceCard { required property var modelData; required property int index; source: modelData; selected: index === root.selectedSourceIndex; foreground: root.foreground; onChosen: { root.selectedSourceIndex = index; root.selectedServerIndex = 0 } }
+                Text { visible: root.sources.length > 0; text: "SOURCE " + (root.selectedSourceIndex + 1) + " OF " + root.sources.length; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption; font.bold: true }
+                RowLayout {
+                  Layout.fillWidth: true
+                  visible: root.sources.length > 0
+                  Button { text: "‹"; tooltipText: "Previous source ([)"; focusable: true; onClicked: root.selectSource(root.selectedSourceIndex - 1) }
+                  SourceCard { Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: Style.space(420); source: root.selectedSource; selected: true; foreground: root.foreground; onChosen: root.selectSource(root.selectedSourceIndex) }
+                  Button { text: "›"; tooltipText: "Next source (])"; focusable: true; onClicked: root.selectSource(root.selectedSourceIndex + 1) }
                 }
                 Text { visible: root.sources.length === 0; text: "No known source exists yet."; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption }
               }
             }
+          }
+
+          Component {
+            id: compactNavigation
             ColumnLayout {
               Layout.fillWidth: true
               Text { text: root.selectedAgent ? String(root.selectedAgent.name) : "No configured agents"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.subtitle; font.bold: true }
-              Flow { Layout.fillWidth: true; spacing: Style.space(5); Repeater { model: root.agents; AgentCard { required property var modelData; required property int index; agent: modelData; selected: index === root.selectedAgentIndex; foreground: root.foreground; Layout.preferredWidth: Style.space(150); onChosen: root.selectAgent(index) } } }
-              Repeater { model: root.sources; SourceCard { required property var modelData; required property int index; source: modelData; selected: index === root.selectedSourceIndex; foreground: root.foreground; onChosen: { root.selectedSourceIndex = index; root.selectedServerIndex = 0 } } }
+              Flickable {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Style.space(56)
+                contentWidth: compactAgents.implicitWidth
+                contentHeight: height
+                clip: true
+                flickableDirection: Flickable.HorizontalFlick
+                boundsBehavior: Flickable.StopAtBounds
+                Row {
+                  id: compactAgents
+                  spacing: Style.space(5)
+                  Repeater {
+                    model: root.agents
+                    AgentCard {
+                      required property var modelData
+                      required property int index
+                      width: Style.space(150)
+                      height: Style.space(46)
+                      agent: modelData
+                      selected: index === root.selectedAgentIndex
+                      foreground: root.foreground
+                      onChosen: root.selectAgent(index)
+                    }
+                  }
+                }
+              }
+              Text { visible: root.sources.length > 0; text: "SOURCE " + (root.selectedSourceIndex + 1) + " OF " + root.sources.length; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption; font.bold: true }
+              RowLayout {
+                Layout.fillWidth: true
+                visible: root.sources.length > 0
+                Button { text: "‹"; tooltipText: "Previous source ([)"; focusable: true; onClicked: root.selectSource(root.selectedSourceIndex - 1) }
+                SourceCard { Layout.fillWidth: true; Layout.minimumWidth: 0; source: root.selectedSource; selected: true; foreground: root.foreground; onChosen: root.selectSource(root.selectedSourceIndex) }
+                Button { text: "›"; tooltipText: "Next source (])"; focusable: true; onClicked: root.selectSource(root.selectedSourceIndex + 1) }
+              }
+              Text { visible: root.sources.length === 0; text: "No known source exists yet."; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption }
             }
           }
 
@@ -360,6 +439,19 @@ Panel {
             Layout.fillWidth: true
             Text { text: root.selectedSource ? String(root.selectedSource.pathDisplay || "Source") : "Choose a source"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true; elide: Text.ElideMiddle; Layout.fillWidth: true }
             DiagnosticBadge { label: root.selectedSource ? Model.badgeForSource(root.selectedSource) : "No source"; severity: root.selectedSource && root.selectedSource.status === "malformed" ? "error" : "info"; foreground: root.foreground }
+          }
+
+          Flow {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Style.space(38)
+            Layout.minimumHeight: Style.space(38)
+            spacing: Style.space(5)
+            Button { text: "Add"; focusable: true; enabled: !!(root.selectedSource && root.selectedSource.writable); onClicked: root.prepareAdd() }
+            Button { text: "Edit"; focusable: true; enabled: !!(root.selectedServer && root.selectedSource && root.selectedSource.writable); onClicked: root.prepareEdit() }
+            Button { text: "Duplicate"; focusable: true; enabled: !!(root.selectedServer && root.selectedSource && root.selectedSource.writable); onClicked: root.prepareDuplicate() }
+            Button { text: root.selectedServer && root.selectedServer.enabled ? "Disable" : "Enable"; focusable: true; enabled: !!(root.selectedServer && root.selectedSource && root.selectedSource.writable); onClicked: root.prepareToggle() }
+            Button { text: "Remove"; focusable: true; enabled: !!(root.selectedServer && root.selectedSource && root.selectedSource.writable); onClicked: root.prepareRemove() }
+            Button { text: "Forget import"; focusable: true; visible: !!(root.selectedSource && root.selectedSource.imported); onClicked: root.prepareForgetImport() }
           }
 
           ColumnLayout {
@@ -377,24 +469,6 @@ Panel {
           ServerEditor { visible: root.editorOpen; server: root.editingServer; sourceId: root.selectedSource ? String(root.selectedSource.sourceId) : ""; foreground: root.foreground; onSaveRequested: root.editorSave(value); onCancelled: root.editorOpen = false }
 
           ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.run(["import-register", "--path", path, "--adapter", adapter, "--mode", mode], "import") }; onCancelled: root.importOpen = false }
-
-          Flow {
-            Layout.fillWidth: true
-            spacing: Style.space(5)
-            Button { text: "Add"; focusable: true; onClicked: root.prepareAdd() }
-            Button { text: "Edit"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareEdit() }
-            Button { text: "Duplicate"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareDuplicate() }
-            Button { text: root.selectedServer && root.selectedServer.enabled ? "Disable" : "Enable"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareToggle() }
-            Button { text: "Remove"; focusable: true; enabled: !!root.selectedServer; onClicked: root.prepareRemove() }
-            Button { text: "Import"; focusable: true; onClicked: root.importOpen = true }
-            Button { text: "Forget import"; focusable: true; visible: !!(root.selectedSource && root.selectedSource.imported); onClicked: root.prepareForgetImport() }
-            Button { text: "Compare"; focusable: true; onClicked: { root.compareOpen = true; backend.compare() } }
-            Button { text: "Target: " + root.conversionTarget; focusable: true; onClicked: root.cycleConversionTarget() }
-            Button { text: "Copy preview"; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource && root.conversionTargets.length > 0; onClicked: backend.convertPreview(String(root.selectedSource.sourceId), String(root.selectedServer.name), root.conversionTarget) }
-            Button { text: "Doctor"; focusable: true; onClicked: backend.run(["doctor"], "doctor") }
-            Button { text: "History"; focusable: true; enabled: !!root.selectedSource; onClicked: { root.historyOpen = true; backend.loadHistory() } }
-            Button { text: "Refresh"; focusable: true; onClicked: root.refresh() }
-          }
 
           ConfirmSheet {
             visible: !!backend.pendingPlan

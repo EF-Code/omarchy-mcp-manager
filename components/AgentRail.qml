@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 
@@ -8,11 +9,15 @@ Flickable {
   property int selectedIndex: 0
   property color foreground: Color.foreground
   signal selected(int index)
-  Layout.preferredHeight: Style.space(270)
+  Layout.preferredHeight: Style.space(160)
+  Layout.minimumHeight: Style.space(120)
+  Layout.maximumHeight: Style.space(160)
+  Layout.minimumWidth: 0
   clip: true
   contentWidth: width
   contentHeight: railColumn.implicitHeight
   boundsBehavior: Flickable.StopAtBounds
+  ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
   ColumnLayout {
     id: railColumn
