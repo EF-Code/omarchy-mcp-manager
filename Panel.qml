@@ -98,27 +98,35 @@ Panel {
     backend.conversionPreview = null
   }
 
+  function revealUtilityView() {
+    Qt.callLater(function() { panelFlick.contentY = 0 })
+  }
+
   function showImport() {
     closeUtilityViews()
     importOpen = true
+    revealUtilityView()
   }
 
   function showComparison() {
     closeUtilityViews()
     compareOpen = true
     backend.compare()
+    revealUtilityView()
   }
 
   function showDiagnostics() {
     closeUtilityViews()
     diagnosticsOpen = true
     backend.run(["doctor"], "doctor")
+    revealUtilityView()
   }
 
   function showHistory() {
     closeUtilityViews()
     historyOpen = true
     backend.loadHistory()
+    revealUtilityView()
   }
 
   function showConversionPreview() {
@@ -126,12 +134,14 @@ Panel {
     closeUtilityViews()
     conversionOpen = true
     backend.convertPreview(String(selectedSource.sourceId), String(selectedServer.name), conversionTarget)
+    revealUtilityView()
   }
 
   function toggleHelp() {
     var opening = !helpOpen
     closeUtilityViews()
     helpOpen = opening
+    if (opening) revealUtilityView()
   }
 
   function selectAgent(index) {
