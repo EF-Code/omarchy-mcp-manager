@@ -125,7 +125,7 @@ def normalized_server(name: object, raw: object, *, source_id: str = "") -> dict
         raw_args = raw_command[1:]
         raw_command = raw_command[0] if raw_command else None
     command, args = redact_command(raw_command, raw_args)
-    url = entry.get("url", entry.get("serverUrl", entry.get("serverURL", entry.get("endpoint"))))
+    url = entry.get("httpUrl", entry.get("url", entry.get("serverUrl", entry.get("serverURL", entry.get("endpoint")))))
     transport = str(entry.get("transport", entry.get("type", "stdio" if command else "http" if url else "unknown"))).lower()
     if transport == "local":
         transport = "stdio"
@@ -186,7 +186,7 @@ def contains_secret_material(value: object, key: str = "") -> bool:
             if secret_key(child_key) and item is not None and item != "" and not is_environment_reference(item):
                 return True
             lowered = child_key.lower()
-            if lowered in {"url", "serverurl", "server_url", "endpoint"} and isinstance(item, str):
+            if lowered in {"url", "httpurl", "http_url", "serverurl", "server_url", "endpoint"} and isinstance(item, str):
                 try:
                     parsed = urlsplit(item)
                     if parsed.username or parsed.password or parsed.query:

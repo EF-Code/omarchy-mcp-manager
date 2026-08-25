@@ -43,7 +43,7 @@ def _validate_payload(payload: dict[str, Any]) -> None:
     if any(not isinstance(key, str) or not key or key.startswith("_") or any(ord(char) < 32 for char in key) for key in payload):
         raise PlanError("payload contains an invalid field name")
     command = payload.get("command")
-    url = payload.get("url", payload.get("serverUrl", payload.get("serverURL", payload.get("endpoint"))))
+    url = payload.get("httpUrl", payload.get("url", payload.get("serverUrl", payload.get("serverURL", payload.get("endpoint")))))
     if command is not None and not isinstance(command, str):
         raise PlanError("command must be a string")
     if url is not None and not isinstance(url, str):
@@ -155,9 +155,9 @@ def plan(request: dict[str, Any]) -> dict[str, Any]:
     if action in {"upsert-server", "duplicate-server"} and not payload:
         raise PlanError("server payload is empty")
     server_exists = any(item.get("name") == name for item in record.get("servers", []))
-    if action == "upsert-server" and not server_exists and not any(payload.get(field) for field in ("command", "url", "serverUrl", "serverURL", "endpoint")):
+    if action == "upsert-server" and not server_exists and not any(payload.get(field) for field in ("command", "httpUrl", "url", "serverUrl", "serverURL", "endpoint")):
         raise PlanError("a new server requires a command or URL")
-    if action == "duplicate-server" and not any(payload.get(field) for field in ("command", "url", "serverUrl", "serverURL", "endpoint")):
+    if action == "duplicate-server" and not any(payload.get(field) for field in ("command", "httpUrl", "url", "serverUrl", "serverURL", "endpoint")):
         raise PlanError("the server cannot be duplicated without a representable command or URL")
     if action == "duplicate-server":
         payload["name"] = str(payload.get("name", name + "-copy"))

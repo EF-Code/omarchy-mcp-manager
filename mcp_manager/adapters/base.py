@@ -248,6 +248,13 @@ def _adapter_payload(
     """Translate normalized editor fields without rewriting unrelated data."""
 
     result = dict(payload)
+    transport = str(result.pop("transport", ""))
+    if adapter.id == "gemini" and "url" in result and action in {"upsert-server", "duplicate-server"}:
+        existing = parsed.get("servers", {}).get(name, {})
+        if not isinstance(existing, dict) or not any(key in existing for key in ("url", "httpUrl")):
+            result["httpUrl"] = result.pop("url")
+        elif "httpUrl" in existing:
+            result["httpUrl"] = result.pop("url")
     if adapter.id != "opencode" or action not in {"upsert-server", "duplicate-server"}:
         return result
     existing = parsed.get("servers", {}).get(name, {})
@@ -259,7 +266,7 @@ def _adapter_payload(
         result.setdefault("type", existing_type if existing_type == "local" else "local")
         if "env" in result and "environment" not in result:
             result["environment"] = result.pop("env")
-    elif any(key in result for key in ("url", "serverUrl", "serverURL", "endpoint")):
+    elif any(key in result for key in ("httpUrl", "url", "serverUrl", "serverURL", "endpoint")):
         result.setdefault("type", existing_type if existing_type == "remote" else "remote")
     return result
 
@@ -270,10 +277,10 @@ def _adapter(id_: str, name: str, executables: tuple[str, ...], capability: str,
 
 _ADAPTERS = (
     _adapter("codex", "Codex", ("codex",), "read-write", ("toml",), _codex_specs, _codex_path, "Targeted mcp_servers TOML table-family edits.", ("mcp_servers",)),
-    _adapter("claude", "Claude Code", ("claude",), "read-write", ("json", "jsonc"), _claude_specs, _claude_path, "Project .mcp.json writes; user state is sensitive and read-only."),
+    _adapter("claude", "Claude Code", ("claude",), "read-write", ("json", "jsonc"), _claude_specs, _claude_path, "Project .mcp.json writes; user state is sensitive and read-only.", ("mcpServers",)),
     _adapter("opencode", "OpenCode", ("opencode",), "read-write", ("json", "jsonc"), _opencode_specs, _opencode_path, "Preserves legacy mcp and v2 mcp.servers shapes.", ("mcp", "servers")),
     _adapter("gemini", "Gemini CLI", ("gemini", "gemini-cli"), "read-write", ("json", "jsonc"), _gemini_specs, _json_path, "Targeted mcpServers edits; policy fields remain visible.", ("mcpServers",)),
-    _adapter("antigravity", "Antigravity", ("agy", "antigravity"), "read-write", ("json", "jsonc"), _antigravity_specs, _antigravity_path, "Ordered version-tolerant candidates; preserves detected field spelling."),
+    _adapter("antigravity", "Antigravity", ("agy", "antigravity"), "read-write", ("json", "jsonc"), _antigravity_specs, _antigravity_path, "Ordered version-tolerant candidates; preserves detected field spelling.", ("mcpServers",)),
     _adapter("copilot", "GitHub Copilot CLI", ("copilot", "gh-copilot"), "read-write", ("json", "jsonc"), _copilot_specs, _json_path, "User and project precedence are shown separately.", ("mcpServers",)),
     _adapter("crush", "Crush", ("crush",), "read-only", ("json", "jsonc"), _crush_specs, _json_path, "crushrc is executable configuration and is never evaluated or rewritten."),
     _adapter("pi", "Pi", ("pi",), "read-only", ("json", "jsonc"), _pi_specs, _json_path, "Detected for explanation; native MCP writer is not advertised."),

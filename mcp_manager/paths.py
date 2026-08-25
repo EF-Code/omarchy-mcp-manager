@@ -209,6 +209,8 @@ def is_environment_reference(value: object) -> str | None:
     text = value.strip()
     if text.startswith("${") and text.endswith("}"):
         name = text[2:-1]
+    elif text.startswith("{env:") and text.endswith("}"):
+        name = text[5:-1]
     elif text.startswith("$"):
         name = text[1:]
     else:

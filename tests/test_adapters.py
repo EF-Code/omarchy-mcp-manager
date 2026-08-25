@@ -63,6 +63,21 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(entry["command"], ["other", "--two"])
         self.assertEqual(entry["environment"], {"KEEP": "$KEEP"})
 
+    def test_current_opencode_environment_reference_and_gemini_http_url(self):
+        opencode = adapter_by_id("opencode")
+        parsed = parse_source(opencode, '{"mcp":{"servers":{"x":{"type":"local","command":["tool"],"environment":{"TOKEN":"{env:MCP_TOKEN}"}}}}}', Path("opencode.json"))
+        server = normalized_servers(opencode, parsed, "src_test")[0]
+        self.assertEqual(server["environment"][0]["state"], "environment-reference")
+        self.assertEqual(server["environment"][0]["reference"], "MCP_TOKEN")
+
+        gemini = adapter_by_id("gemini")
+        source = '{"mcpServers":{}}'
+        changed = patch_source(gemini, source, Path("settings.json"), action="upsert-server", name="remote", payload={"name": "remote", "url": "https://example.test/mcp", "transport": "http"})
+        entry = parse_source(gemini, changed, Path("settings.json"))["servers"]["remote"]
+        self.assertEqual(entry, {"httpUrl": "https://example.test/mcp"})
+        normalized = normalized_servers(gemini, parse_source(gemini, changed, Path("settings.json")), "src_test")[0]
+        self.assertEqual(normalized["transport"], "http")
+
     def test_duplicate_keys_are_rejected(self):
         with self.assertRaises(DuplicateKeyError):
             loads('{"mcpServers": {}, "mcpServers": {}}')
