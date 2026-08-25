@@ -2,6 +2,13 @@
 
 All notable changes to MCP Manager are documented here.
 
+## [1.0.6] - 2026-08-25
+
+- Added persistent, reversible per-finding Ignore and Clear all controls backed
+  only by opaque IDs in owner-only XDG state, plus Restore ignored.
+- Added fixed `×` controls to Import and Compare and removed the redundant
+  second rendering of the selected source path.
+
 ## [1.0.5] - 2026-08-25
 
 - Renamed the aggregate issue count to static diagnostics and made the header

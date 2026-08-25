@@ -15,6 +15,17 @@ Rectangle {
   border.width: 1
   border.color: Qt.alpha(Color.accent, 0.35)
 
+  Button {
+    anchors.top: parent.top
+    anchors.right: parent.right
+    anchors.margins: Style.space(6)
+    z: 2
+    text: "×"
+    tooltipText: "Close comparison"
+    focusable: true
+    onClicked: root.closed()
+  }
+
   ColumnLayout {
     id: matrix
     anchors.fill: parent
@@ -24,7 +35,6 @@ Rectangle {
       Layout.fillWidth: true
       Text { text: "CROSS-AGENT COMPARISON"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.caption; font.bold: true }
       Item { Layout.fillWidth: true }
-      Button { text: "Close"; onClicked: root.closed() }
     }
     RowLayout {
       Layout.fillWidth: true

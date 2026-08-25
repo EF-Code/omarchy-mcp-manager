@@ -41,5 +41,8 @@ assert.strictEqual(diagnosticEntries.length, 1);
 assert.strictEqual(diagnosticEntries[0].serverName, 'beta');
 assert.strictEqual(diagnosticEntries[0].severity, 'info');
 assert.ok(model.diagnosticGuidance('relative-cwd').includes('absolute'));
+data.agents[1].sources[0].servers[1].diagnostics[0].ignored = true;
+assert.strictEqual(model.diagnosticEntries(data).length, 0);
+delete data.agents[1].sources[0].servers[1].diagnostics[0].ignored;
 assert.deepStrictEqual(model.historyForSource([{ sourceId: 's1', action: 'old' }, { sourceId: 's2' }, { sourceId: 's1', action: 'new' }], 's1').map(item => item.action), ['new', 'old']);
 console.log('model tests passed');

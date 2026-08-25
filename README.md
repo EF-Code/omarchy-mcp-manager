@@ -67,6 +67,10 @@ Doctor checks syntax, schema, duplicate names, direct `PATH` presence, URL
 syntax, environment-variable-name presence without reading values, relative
 path risks, unsupported transports, literal-secret risks, and precedence
 conflicts. It never starts an MCP server and never claims connectivity.
+Individual findings can be ignored, all current findings can be cleared, and
+ignored findings can be restored. Ignore state contains only opaque diagnostic
+IDs in the plugin's owner-only XDG state directory; it does not contain source
+paths, labels, commands, configuration values, or credentials.
 
 ## Dependencies and removal
 

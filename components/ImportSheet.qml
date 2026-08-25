@@ -19,7 +19,12 @@ Rectangle {
     anchors.fill: parent
     anchors.margins: Style.space(9)
     spacing: Style.space(7)
-    Text { text: "IMPORT CONFIG"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true }
+    RowLayout {
+      Layout.fillWidth: true
+      Text { text: "IMPORT CONFIG"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true }
+      Item { Layout.fillWidth: true }
+      Button { text: "×"; tooltipText: "Close import"; focusable: true; onClicked: root.cancelled() }
+    }
     TextField { id: pathField; Layout.fillWidth: true; placeholderText: "Absolute JSON, JSONC, or Codex TOML path" }
     Text { Layout.fillWidth: true; text: "Read-only is the default. Manage in place authorizes only this exact file."; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap }
     RowLayout {

@@ -12,6 +12,7 @@ from typing import Any
 from .adapters import adapter_by_id, parse_source, writer_supported
 from .conversion import comparison, conversion_batch_preview, conversion_preview, find_server
 from .discovery import _imports_path, public_scan, scan
+from .diagnostic_state import all_diagnostics, ignore_all, ignore_diagnostic, restore_all
 from .json_source import loads as strict_json_loads
 from .model import stable_id
 from .paths import UnsafePathError, decode_source, manager_dirs, read_bytes, source_display, validate_path
@@ -85,6 +86,9 @@ def _arg_parser() -> argparse.ArgumentParser:
     hist = sub.add_parser("history")
     hist.add_argument("--limit", type=int, default=20)
     sub.add_parser("doctor")
+    sub.add_parser("diagnostic-ignore-stdin")
+    sub.add_parser("diagnostic-ignore-all")
+    sub.add_parser("diagnostic-restore-all")
     sub.add_parser("compare")
     sub.add_parser("convert-preview-stdin")
     sub.add_parser("convert-batch-preview-stdin")
@@ -148,6 +152,24 @@ def main(argv: list[str] | None = None) -> int:
         if op == "doctor":
             result = public_scan(scan())
             return _print(response(op, ok=True, data=result))
+        if op == "diagnostic-ignore-stdin":
+            request = _stdin_request()
+            result = scan()
+            valid_ids = {
+                str(item.get("diagnosticId", ""))
+                for item in all_diagnostics(result.get("agents", []), result.get("diagnostics", []))
+            }
+            count = ignore_diagnostic(_request_text(request, "diagnosticId", limit=64), valid_ids)
+            return _print(response(op, ok=True, data={"ignoredDiagnostics": count}))
+        if op == "diagnostic-ignore-all":
+            result = scan()
+            valid_ids = {
+                str(item.get("diagnosticId", ""))
+                for item in all_diagnostics(result.get("agents", []), result.get("diagnostics", []))
+            }
+            return _print(response(op, ok=True, data={"ignoredDiagnostics": ignore_all(valid_ids)}))
+        if op == "diagnostic-restore-all":
+            return _print(response(op, ok=True, data={"ignoredDiagnostics": restore_all()}))
         if op == "compare":
             result = scan()
             return _print(response(op, ok=True, data=comparison(public_scan(result))))

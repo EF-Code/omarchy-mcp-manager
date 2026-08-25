@@ -10,6 +10,7 @@ from typing import Any
 
 from .adapters import Adapter, SourceSpec, adapter_by_id, adapters, normalized_servers, parse_source, writer_supported
 from .diagnostics import cross_source_diagnostics, server_diagnostics, source_diagnostics
+from .diagnostic_state import annotate_diagnostics
 from .model import MAX_IMPORTS, MAX_SERVERS, deep_limit, stable_id
 from .paths import (UnsafePathError, decode_source, manager_dirs, metadata, read_bytes, read_bytes_with_parent,
                     source_display, validate_path)
@@ -95,10 +96,6 @@ def _source_id(adapter_id: str, path: Path) -> str:
 
 def _server_count(agents: list[dict[str, Any]]) -> int:
     return sum(len(source.get("servers", [])) for agent in agents for source in agent.get("sources", []))
-
-
-def _issue_count(agents: list[dict[str, Any]]) -> int:
-    return sum(len(source.get("diagnostics", [])) for agent in agents for source in agent.get("sources", []))
 
 
 def _source_record(adapter: Adapter, spec: SourceSpec, source_id: str, default_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -262,14 +259,14 @@ def scan() -> dict[str, Any]:
         })
     agents.sort(key=lambda item: (0 if item["isOmarchyDefault"] else 1, str(item["name"]).lower()))
     cross_source_diagnostics(agents)
+    active_issues, ignored_issues = annotate_diagnostics(agents, default_diagnostics + import_diagnostics)
     for agent in agents:
         agent["diagnostics"] = [diag for source in agent["sources"] for diag in source.get("diagnostics", [])]
-    issues = _issue_count(agents) + len(default_diagnostics) + len(import_diagnostics)
     result = {
         "schemaVersion": 1,
         "defaultAgent": selected,
         "agents": agents,
-        "stats": {"agents": len(agents), "servers": _server_count(agents), "issues": issues},
+        "stats": {"agents": len(agents), "servers": _server_count(agents), "issues": active_issues, "ignoredDiagnostics": ignored_issues},
         "diagnostics": default_diagnostics + import_diagnostics,
         "_internal": internal,
     }

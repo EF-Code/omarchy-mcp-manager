@@ -135,9 +135,10 @@ function diagnosticGuidance(code) {
 function diagnosticEntries(data) {
   var entries = []
   function add(diag, agentName, sourceName, serverName) {
-    if (!diag) return
+    if (!diag || diag.ignored === true) return
     entries.push({
       code: String(diag.code || "diagnostic"),
+      diagnosticId: String(diag.diagnosticId || ""),
       label: String(diag.label || diag.code || "Diagnostic"),
       severity: String(diag.severity || "info"),
       agentName: String(agentName || "General"),

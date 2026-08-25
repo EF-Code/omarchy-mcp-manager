@@ -77,6 +77,13 @@ QtObject {
     run(["import-register-stdin"], "import", JSON.stringify({ path: String(path), adapter: String(adapter), mode: String(mode) }))
   }
 
+  function ignoreDiagnostic(diagnosticId) {
+    run(["diagnostic-ignore-stdin"], "diagnostic-ignore", JSON.stringify({ diagnosticId: String(diagnosticId) }))
+  }
+
+  function ignoreAllDiagnostics() { run(["diagnostic-ignore-all"], "diagnostic-ignore-all") }
+  function restoreAllDiagnostics() { run(["diagnostic-restore-all"], "diagnostic-restore-all") }
+
   function handle(action, value) {
     loading = false
     if (!value || value.ok !== true) {
@@ -103,6 +110,11 @@ QtObject {
     }
     if (action === "import" || action === "forget-import") {
       statusMessage = action === "import" ? "Import registered" : "Import forgotten"
+      Qt.callLater(root.refresh)
+      return
+    }
+    if (action === "diagnostic-ignore" || action === "diagnostic-ignore-all" || action === "diagnostic-restore-all") {
+      statusMessage = action === "diagnostic-restore-all" ? "Restored ignored diagnostics" : "Diagnostic ignored"
       Qt.callLater(root.refresh)
       return
     }

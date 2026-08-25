@@ -403,7 +403,15 @@ Panel {
 
           ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.registerImport(path, adapter, mode) }; onCancelled: root.importOpen = false }
           ComparisonMatrix { visible: root.compareOpen; comparison: backend.comparison; foreground: root.foreground; onClosed: root.compareOpen = false }
-          DiagnosticsSheet { visible: root.diagnosticsOpen; scanData: backend.data; foreground: root.foreground; onClosed: root.diagnosticsOpen = false }
+          DiagnosticsSheet {
+            visible: root.diagnosticsOpen
+            scanData: backend.data
+            foreground: root.foreground
+            onClosed: root.diagnosticsOpen = false
+            onIgnoreRequested: function(diagnosticId) { backend.ignoreDiagnostic(diagnosticId) }
+            onClearAllRequested: backend.ignoreAllDiagnostics()
+            onRestoreAllRequested: backend.restoreAllDiagnostics()
+          }
           ConversionPreview { visible: root.conversionOpen && !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: { root.conversionOpen = false; backend.conversionPreview = null } }
           HistorySheet {
             visible: root.historyOpen
@@ -532,12 +540,6 @@ Panel {
               }
               Text { visible: root.sources.length === 0; text: "No known source exists yet."; color: Qt.alpha(root.foreground, 0.7); font.family: Style.font.family; font.pixelSize: Style.font.caption }
             }
-          }
-
-          RowLayout {
-            Layout.fillWidth: true
-            Text { text: root.selectedSource ? String(root.selectedSource.pathDisplay || "Source") : "Choose a source"; color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true; elide: Text.ElideMiddle; Layout.fillWidth: true }
-            DiagnosticBadge { label: root.selectedSource ? Model.badgeForSource(root.selectedSource) : "No source"; severity: root.selectedSource && root.selectedSource.status === "malformed" ? "error" : "info"; foreground: root.foreground }
           }
 
           SectionDivider { label: "MCP SERVERS"; foreground: root.foreground }

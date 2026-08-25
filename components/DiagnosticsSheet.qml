@@ -9,7 +9,11 @@ Rectangle {
   property var scanData: null
   property color foreground: Color.foreground
   readonly property var entries: Model.diagnosticEntries(scanData)
+  readonly property int ignoredCount: Number(scanData && scanData.stats ? scanData.stats.ignoredDiagnostics || 0 : 0)
   signal closed()
+  signal ignoreRequested(string diagnosticId)
+  signal clearAllRequested()
+  signal restoreAllRequested()
   Layout.fillWidth: true
   implicitHeight: content.implicitHeight + Style.space(18)
   color: Qt.alpha(root.foreground, 0.06)
@@ -33,12 +37,14 @@ Rectangle {
         font.bold: true
       }
       Item { Layout.fillWidth: true }
+      Button { visible: root.entries.length > 0; text: "Clear all"; tooltipText: "Ignore all current diagnostics"; focusable: true; onClicked: root.clearAllRequested() }
+      Button { visible: root.ignoredCount > 0; text: "Restore ignored"; focusable: true; onClicked: root.restoreAllRequested() }
       Button { text: "×"; tooltipText: "Close diagnostics"; focusable: true; onClicked: root.closed() }
     }
 
     Text {
       Layout.fillWidth: true
-      text: "Configuration findings only. MCP Manager has not started a server or tested connectivity."
+      text: "Configuration findings only. MCP Manager has not started a server or tested connectivity. Ignored findings are stored only as opaque IDs and can be restored."
       color: Qt.alpha(root.foreground, 0.72)
       font.family: Style.font.family
       font.pixelSize: Style.font.caption
@@ -47,7 +53,7 @@ Rectangle {
 
     Text {
       visible: root.entries.length === 0
-      text: "No static diagnostics were found."
+      text: root.ignoredCount > 0 ? "No active diagnostics. " + root.ignoredCount + " ignored finding" + (root.ignoredCount === 1 ? " can" : "s can") + " be restored." : "No static diagnostics were found."
       color: Qt.alpha(root.foreground, 0.72)
       font.family: Style.font.family
       font.pixelSize: Style.font.caption
@@ -90,6 +96,7 @@ Rectangle {
               Layout.fillWidth: true
               DiagnosticBadge { label: String(diagnosticEntry.modelData.severity || "info"); severity: String(diagnosticEntry.modelData.severity || "info"); foreground: root.foreground }
               Text { Layout.fillWidth: true; text: String(diagnosticEntry.modelData.label || "Diagnostic"); color: root.foreground; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true; wrapMode: Text.WordWrap }
+              Button { text: "Ignore"; tooltipText: "Hide this finding until ignored diagnostics are restored"; focusable: true; onClicked: root.ignoreRequested(String(diagnosticEntry.modelData.diagnosticId || "")) }
             }
             Text {
               Layout.fillWidth: true
