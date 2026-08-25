@@ -2,6 +2,11 @@
 
 All notable changes to MCP Manager are documented here.
 
+## [1.0.7] - 2026-08-25
+
+- Fixed zero-value summary handling so ignoring or clearing findings immediately
+  updates both diagnostic counts to the active finding total.
+
 ## [1.0.6] - 2026-08-25
 
 - Added persistent, reversible per-finding Ignore and Clear all controls backed

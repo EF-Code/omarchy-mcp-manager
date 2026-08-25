@@ -46,10 +46,14 @@ function diagnosticCount(data) {
   var count = 0
   agentsFrom(data).forEach(function(agent) {
     sourcesFrom(agent).forEach(function(source) {
-      count += Array.isArray(source.diagnostics) ? source.diagnostics.length : 0
+      count += (Array.isArray(source.diagnostics) ? source.diagnostics : []).filter(function(diagnostic) {
+        return diagnostic && diagnostic.ignored !== true
+      }).length
     })
   })
-  return count + (data && Array.isArray(data.diagnostics) ? data.diagnostics.length : 0)
+  return count + (data && Array.isArray(data.diagnostics) ? data.diagnostics : []).filter(function(diagnostic) {
+    return diagnostic && diagnostic.ignored !== true
+  }).length
 }
 
 function serverCount(data) {
@@ -104,9 +108,9 @@ function diffLines(preview) {
 
 function summary(data) {
   var stats = data && data.stats ? data.stats : {}
-  var agents = Number(stats.agents || agentsFrom(data).length)
-  var servers = Number(stats.servers || serverCount(data))
-  var issues = Number(stats.issues || diagnosticCount(data))
+  var agents = Number(stats.agents === undefined || stats.agents === null ? agentsFrom(data).length : stats.agents)
+  var servers = Number(stats.servers === undefined || stats.servers === null ? serverCount(data) : stats.servers)
+  var issues = Number(stats.issues === undefined || stats.issues === null ? diagnosticCount(data) : stats.issues)
   return agents + " agent" + (agents === 1 ? "" : "s") + " · " + servers + " server" + (servers === 1 ? "" : "s") + " · " + issues + " diagnostic" + (issues === 1 ? "" : "s")
 }
 

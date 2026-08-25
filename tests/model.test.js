@@ -26,7 +26,12 @@ assert.strictEqual(model.clampedIndex(0, 0), -1);
 assert.strictEqual(model.responsiveMode(false, 900, 700, 1), 'wide');
 assert.strictEqual(model.responsiveMode(true, 900, 700, 1), 'compact');
 assert.strictEqual(model.summary(data), '2 agents · 3 servers · 1 diagnostic');
+assert.strictEqual(model.summary({ stats: { agents: 0, servers: 0, issues: 0 }, agents: [] }), '0 agents · 0 servers · 0 diagnostics');
 assert.strictEqual(model.diagnosticCount({ agents: [{ sources: [{ diagnostics: [{ code: 'one' }] }], diagnostics: [{ code: 'one' }] }], diagnostics: [] }), 1);
+assert.strictEqual(model.diagnosticCount({
+  agents: [{ sources: [{ diagnostics: [{ code: 'active' }, { code: 'ignored', ignored: true }] }] }],
+  diagnostics: [{ code: 'ignored-general', ignored: true }]
+}), 1);
 assert.deepStrictEqual(model.duplicatePayload({ name: 'alpha', enabled: true, command: 'echo', args: ['ok'] }), { name: 'alpha-copy', enabled: true, command: 'echo', args: ['ok'] });
 assert.strictEqual(model.duplicatePayload({ name: 'alpha', command: 'echo', args: ['<secret hidden>'] }).args, undefined);
 assert.deepStrictEqual(model.writableAgentIds([
@@ -43,6 +48,9 @@ assert.strictEqual(diagnosticEntries[0].severity, 'info');
 assert.ok(model.diagnosticGuidance('relative-cwd').includes('absolute'));
 data.agents[1].sources[0].servers[1].diagnostics[0].ignored = true;
 assert.strictEqual(model.diagnosticEntries(data).length, 0);
+data.stats.issues = 0;
+assert.strictEqual(model.summary(data), '2 agents · 3 servers · 0 diagnostics');
+data.stats.issues = 1;
 delete data.agents[1].sources[0].servers[1].diagnostics[0].ignored;
 assert.deepStrictEqual(model.historyForSource([{ sourceId: 's1', action: 'old' }, { sourceId: 's2' }, { sourceId: 's1', action: 'new' }], 's1').map(item => item.action), ['new', 'old']);
 console.log('model tests passed');
