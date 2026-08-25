@@ -84,19 +84,22 @@ def _check_components(path: Path, allow_missing: bool) -> None:
             raise UnsafePathError("path component is not a directory")
 
 
-def validate_path(
+def validate_path_snapshot(
     path: str | Path,
     *,
     allow_missing: bool = False,
     source: bool = True,
     require_private_permissions: bool = True,
-) -> Path:
+) -> tuple[Path, os.stat_result, os.stat_result | None]:
     candidate = _absolute(path)
     if source and _system_path(candidate):
         raise UnsafePathError("system paths are not accepted")
     _check_components(candidate, allow_missing)
-    if candidate.exists():
+    try:
         info = os.lstat(candidate)
+    except FileNotFoundError:
+        info = None
+    if info is not None:
         if stat.S_ISLNK(info.st_mode):
             raise UnsafePathError("symlink source is not accepted")
         if source and not stat.S_ISREG(info.st_mode):
@@ -115,10 +118,31 @@ def validate_path(
         or (require_private_permissions and parent_info.st_mode & 0o022)
     ):
         raise UnsafePathError("parent directory ownership or mode is unsafe")
+    return candidate, parent_info, info
+
+
+def validate_path(
+    path: str | Path,
+    *,
+    allow_missing: bool = False,
+    source: bool = True,
+    require_private_permissions: bool = True,
+) -> Path:
+    candidate, _parent_info, _source_info = validate_path_snapshot(
+        path,
+        allow_missing=allow_missing,
+        source=source,
+        require_private_permissions=require_private_permissions,
+    )
     return candidate
 
 
-def open_directory_fd(path: str | Path, *, require_private_permissions: bool = True) -> int:
+def open_directory_fd(
+    path: str | Path,
+    *,
+    require_private_permissions: bool = True,
+    expected_info: os.stat_result | None = None,
+) -> int:
     """Open a directory through an fd-relative, no-follow component walk."""
 
     candidate = _absolute(path)
@@ -140,6 +164,7 @@ def open_directory_fd(path: str | Path, *, require_private_permissions: bool = T
         not stat.S_ISDIR(info.st_mode)
         or info.st_uid != os.getuid()
         or (require_private_permissions and stat.S_IMODE(info.st_mode) & 0o022)
+        or (expected_info is not None and (info.st_dev, info.st_ino) != (expected_info.st_dev, expected_info.st_ino))
     ):
         os.close(fd)
         raise UnsafePathError("directory ownership or mode is unsafe")
@@ -152,17 +177,24 @@ def read_bytes_with_parent(
     max_size: int = MAX_FILE_SIZE,
     require_private_permissions: bool = True,
 ) -> tuple[bytes, os.stat_result, os.stat_result]:
-    candidate = validate_path(
+    candidate, expected_parent, expected_source = validate_path_snapshot(
         path,
         allow_missing=False,
         require_private_permissions=require_private_permissions,
     )
-    dir_fd = open_directory_fd(candidate.parent, require_private_permissions=require_private_permissions)
+    dir_fd = open_directory_fd(
+        candidate.parent,
+        require_private_permissions=require_private_permissions,
+        expected_info=expected_parent,
+    )
     try:
         before = os.stat(candidate.name, dir_fd=dir_fd, follow_symlinks=False)
     except OSError as exc:
         os.close(dir_fd)
         raise UnsafePathError("cannot inspect source safely") from exc
+    if expected_source is None or (before.st_dev, before.st_ino) != (expected_source.st_dev, expected_source.st_ino):
+        os.close(dir_fd)
+        raise UnsafePathError("source changed after validation")
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = os.open(candidate.name, flags, dir_fd=dir_fd)

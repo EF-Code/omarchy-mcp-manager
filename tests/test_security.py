@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from mcp_manager import paths as path_helpers
 from mcp_manager.cli import main as cli_main
 from mcp_manager.paths import UnsafePathError, manager_dirs, metadata, read_bytes, read_bytes_with_parent, validate_path
 from mcp_manager.redaction import sanitize_text
@@ -55,6 +56,34 @@ class SecurityTests(unittest.TestCase):
             self.assertEqual(info.st_uid, os.getuid())
             with self.assertRaises(UnsafePathError):
                 read_bytes(source)
+
+    def test_discovery_read_rejects_regular_parent_swap_after_validation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            parent = root / "source"
+            parent.mkdir()
+            source = parent / "config.json"
+            source.write_text("original\n", encoding="utf-8")
+            replacement = root / "replacement"
+            replacement.mkdir()
+            (replacement / "config.json").write_text("replacement\n", encoding="utf-8")
+            moved = root / "source-moved"
+            real_open = path_helpers.open_directory_fd
+            swapped = False
+
+            def swap_then_open(path, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(path) == parent:
+                    swapped = True
+                    parent.rename(moved)
+                    replacement.rename(parent)
+                return real_open(path, **kwargs)
+
+            with mock.patch("mcp_manager.paths.open_directory_fd", side_effect=swap_then_open):
+                with self.assertRaises(UnsafePathError):
+                    read_bytes_with_parent(source)
+            self.assertEqual((moved / "config.json").read_text(encoding="utf-8"), "original\n")
+            self.assertEqual(source.read_text(encoding="utf-8"), "replacement\n")
 
     def test_drift_refuses_write(self):
         with tempfile.TemporaryDirectory() as temp:
