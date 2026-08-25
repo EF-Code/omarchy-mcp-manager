@@ -13,7 +13,7 @@ from typing import Any
 from .adapters import parse_source, patch_source, normalized_servers
 from .discovery import scan
 from .model import deep_limit, valid_name
-from .paths import decode_source, manager_dirs, metadata, read_bytes
+from .paths import decode_source, manager_dirs, metadata, read_bytes_with_parent
 from .redaction import contains_secret_material
 from .transaction import atomic_file, commit, load_backup, read_json
 
@@ -133,10 +133,12 @@ def plan(request: dict[str, Any]) -> dict[str, Any]:
         raise PlanError("source is missing, malformed, unsafe, or read-only")
     adapter = record["_adapter"]
     path = record["_path"]
-    data, info = read_bytes(path)
+    data, info, parent_info = read_bytes_with_parent(path)
     text = decode_source(data)
-    current_meta = metadata(info, data)
-    if current_meta.get("fingerprint") != record.get("fingerprint"):
+    current_meta = metadata(info, data, parent_info)
+    recorded_meta = record.get("_metadata", {})
+    identity_keys = ("fingerprint", "device", "inode", "parentDevice", "parentInode")
+    if any(current_meta.get(key) != recorded_meta.get(key) for key in identity_keys):
         raise PlanError("source changed while preparing the preview; refresh and retry")
     parsed = parse_source(adapter, text, path)
     payload = _request_payload(request)
@@ -240,10 +242,10 @@ def apply(plan_id: str, request: dict[str, Any]) -> dict[str, Any]:
     if not record.get("writable") or not record.get("exists"):
         raise PlanError("source is no longer writable")
     path = record["_path"]
-    data, info = read_bytes(path)
-    current_meta = metadata(info, data)
+    data, info, parent_info = read_bytes_with_parent(path)
+    current_meta = metadata(info, data, parent_info)
     base = stored.get("base", {})
-    keys = ("fingerprint", "size", "device", "inode", "mode", "mtimeNs")
+    keys = ("fingerprint", "size", "device", "inode", "mode", "mtimeNs", "parentDevice", "parentInode")
     if any(current_meta.get(key) != base.get(key) for key in keys):
         raise PlanError("source changed after preview; refresh and review drift")
     payload = stored.get("payload", {})
@@ -289,8 +291,8 @@ def plan_restore(backup_id: str, source_id: str) -> dict[str, Any]:
     if not record.get("exists") or not record.get("writable"):
         raise PlanError("source is missing, malformed, unsafe, or read-only")
     path = record["_path"]
-    current_data, current_info = read_bytes(path)
-    current_meta = metadata(current_info, current_data)
+    current_data, current_info, parent_info = read_bytes_with_parent(path)
+    current_meta = metadata(current_info, current_data, parent_info)
     backup_data, _ = load_backup(backup_id, source_id)
     current_parsed = parse_source(record["_adapter"], decode_source(current_data), path)
     backup_parsed = parse_source(record["_adapter"], decode_source(backup_data), path)

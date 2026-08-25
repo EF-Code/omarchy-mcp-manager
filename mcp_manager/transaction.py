@@ -264,8 +264,10 @@ def commit(
         commit_recorded = False
         try:
             current_data, current_info = _read_at(dir_fd, candidate.name)
-            current = metadata(current_info, current_data)
-            comparable = ("fingerprint", "size", "device", "inode", "mode", "mtimeNs")
+            current = metadata(current_info, current_data, os.fstat(dir_fd))
+            comparable = ("fingerprint", "size", "device", "inode", "mode", "mtimeNs", "parentDevice", "parentInode")
+            if not all(key in base for key in comparable):
+                raise TransactionError("source plan is missing required identity metadata")
             if any(current.get(key) != base.get(key) for key in comparable):
                 raise TransactionError("source changed outside MCP Manager; refresh and preview again")
             mode = int(current["mode"]) & 0o755
@@ -308,7 +310,7 @@ def commit(
             os.fsync(dir_fd)
             _failpoint("after-dir-fsync")
             readback, readback_info = _read_at(dir_fd, candidate.name)
-            readback_meta = metadata(readback_info, readback)
+            readback_meta = metadata(readback_info, readback, os.fstat(dir_fd))
             if readback != new_data or readback_meta["fingerprint"] != journal["newFingerprint"]:
                 raise TransactionError("readback verification failed")
             if verify is not None:

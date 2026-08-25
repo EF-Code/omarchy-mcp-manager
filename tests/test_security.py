@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from mcp_manager.cli import main as cli_main
-from mcp_manager.paths import UnsafePathError, manager_dirs, metadata, read_bytes, validate_path
+from mcp_manager.paths import UnsafePathError, manager_dirs, metadata, read_bytes, read_bytes_with_parent, validate_path
 from mcp_manager.redaction import sanitize_text
 from mcp_manager.transaction import OwnerLock, TransactionError, atomic_file, commit, history, recover
 
@@ -64,8 +64,8 @@ class SecurityTests(unittest.TestCase):
             saved = {key: os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR")}
             try:
                 os.environ.update({"XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "runtime")})
-                old, info = read_bytes(path)
-                base = metadata(info, old)
+                old, info, parent_info = read_bytes_with_parent(path)
+                base = metadata(info, old, parent_info)
                 path.write_text("external\n", encoding="utf-8")
                 with self.assertRaises(TransactionError):
                     commit("src-drift", path, b"new\n", base, operation_id="op-drift", history_entry={"action": "test"})
@@ -92,22 +92,14 @@ class SecurityTests(unittest.TestCase):
             old_env = {key: os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR")}
             try:
                 os.environ.update({"XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "runtime")})
-                original, info = read_bytes(path)
-                real_validate = validate_path
-                calls = 0
-
-                def swap_after_validation(candidate, **kwargs):
-                    nonlocal calls
-                    result = real_validate(candidate, **kwargs)
-                    calls += 1
-                    if calls == 2:
-                        parent.rename(moved)
-                        parent.symlink_to(attacker, target_is_directory=True)
-                    return result
-
-                with mock.patch("mcp_manager.transaction.validate_path", side_effect=swap_after_validation):
-                    with self.assertRaises(UnsafePathError):
-                        commit("src-swap", path, b"new\n", metadata(info, original), operation_id="op-swap", history_entry={"action": "test"})
+                original, info, parent_info = read_bytes_with_parent(path)
+                parent.rename(moved)
+                parent.mkdir()
+                # A hard link preserves the source inode and content. Binding
+                # only to the file would therefore miss this parent redirect.
+                os.link(moved / "config.json", path)
+                with self.assertRaises(TransactionError):
+                    commit("src-swap", path, b"new\n", metadata(info, original, parent_info), operation_id="op-swap", history_entry={"action": "test"})
                 self.assertEqual((moved / "config.json").read_text(encoding="utf-8"), "old\n")
                 self.assertEqual(attacker_path.read_text(encoding="utf-8"), "attacker\n")
             finally:
@@ -130,8 +122,8 @@ class SecurityTests(unittest.TestCase):
                 os.environ["XDG_RUNTIME_DIR"] = str(runtime)
                 path = root / "config.json"
                 path.write_text('{"ok":true}\n', encoding="utf-8")
-                old, info = read_bytes(path)
-                base = metadata(info, old)
+                old, info, parent_info = read_bytes_with_parent(path)
+                base = metadata(info, old, parent_info)
                 os.environ["MCP_MANAGER_FAILPOINT"] = "after-replace"
                 with self.assertRaises(TransactionError):
                     commit("src-fail", path, b'{"ok":false}\n', base, operation_id="op-fail", history_entry={"action": "test"})
@@ -183,8 +175,8 @@ class SecurityTests(unittest.TestCase):
             old_env = {key: os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR")}
             try:
                 os.environ.update({"XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "runtime")})
-                old, info = read_bytes(path)
-                commit("src-mode", path, b"new\n", metadata(info, old), operation_id="op-mode", history_entry={"action": "test"})
+                old, info, parent_info = read_bytes_with_parent(path)
+                commit("src-mode", path, b"new\n", metadata(info, old, parent_info), operation_id="op-mode", history_entry={"action": "test"})
                 self.assertEqual(stat.S_IMODE(parent.stat().st_mode), 0o755)
             finally:
                 for key, value in old_env.items():
@@ -201,9 +193,9 @@ class SecurityTests(unittest.TestCase):
             old_env = {key: os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR")}
             try:
                 os.environ.update({"XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "runtime")})
-                old, info = read_bytes(path)
+                old, info, parent_info = read_bytes_with_parent(path)
                 with self.assertRaises(TransactionError):
-                    commit("src-verify", path, b"new\n", metadata(info, old), operation_id="op-verify", history_entry={"action": "test"}, verify=lambda _data: (_ for _ in ()).throw(ValueError("bad semantics")))
+                    commit("src-verify", path, b"new\n", metadata(info, old, parent_info), operation_id="op-verify", history_entry={"action": "test"}, verify=lambda _data: (_ for _ in ()).throw(ValueError("bad semantics")))
                 self.assertEqual(path.read_bytes(), old)
             finally:
                 for key, value in old_env.items():
@@ -224,9 +216,9 @@ class SecurityTests(unittest.TestCase):
                 old_env = {key: os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR", "MCP_MANAGER_FAILPOINT")}
                 try:
                     os.environ.update({"XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "runtime"), "MCP_MANAGER_FAILPOINT": failpoint})
-                    before, info = read_bytes(path)
+                    before, info, parent_info = read_bytes_with_parent(path)
                     with self.assertRaises(TransactionError):
-                        commit("src-" + failpoint, path, new, metadata(info, before), operation_id="op-" + failpoint, history_entry={"action": "test"})
+                        commit("src-" + failpoint, path, new, metadata(info, before, parent_info), operation_id="op-" + failpoint, history_entry={"action": "test"})
                     self.assertEqual(path.read_bytes(), old if failpoint in early else new)
                     os.environ.pop("MCP_MANAGER_FAILPOINT", None)
                     recovery = recover()
@@ -265,8 +257,8 @@ class SecurityTests(unittest.TestCase):
             old = {key: os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR")}
             try:
                 os.environ.update({"XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "runtime")})
-                data, info = read_bytes(path)
-                commit("src-perms", path, b"new\n", metadata(info, data), operation_id="op-perms", history_entry={"action": "test"})
+                data, info, parent_info = read_bytes_with_parent(path)
+                commit("src-perms", path, b"new\n", metadata(info, data, parent_info), operation_id="op-perms", history_entry={"action": "test"})
                 dirs = manager_dirs(create=True)
                 sensitive = list((dirs["state"] / "backups").glob("*")) + [dirs["state"] / "history.json"] + list((dirs["runtime"] / "locks").glob("*"))
                 self.assertTrue(history())
@@ -289,8 +281,8 @@ class SecurityTests(unittest.TestCase):
             try:
                 os.environ.update({"XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "runtime")})
                 for index in range(1, 8):
-                    data, info = read_bytes(path)
-                    commit("src-retention", path, f"state-{index}\n".encode(), metadata(info, data), operation_id=f"op-retention-{index}", history_entry={"action": "test", "sourceId": "src-retention"})
+                    data, info, parent_info = read_bytes_with_parent(path)
+                    commit("src-retention", path, f"state-{index}\n".encode(), metadata(info, data, parent_info), operation_id=f"op-retention-{index}", history_entry={"action": "test", "sourceId": "src-retention"})
                 entries = history(20)
                 self.assertEqual(sum(1 for item in entries if item["backupAvailable"]), 5)
                 self.assertFalse(entries[0]["backupAvailable"])
@@ -372,9 +364,12 @@ class SecurityTests(unittest.TestCase):
 
     def test_qml_never_places_request_json_in_process_arguments(self):
         controller = (Path(__file__).parent.parent / "Controller.qml").read_text(encoding="utf-8")
-        self.assertNotIn('"plan-json"', controller)
-        self.assertNotIn('"apply-json"', controller)
+        panel = (Path(__file__).parent.parent / "Panel.qml").read_text(encoding="utf-8")
+        for forbidden in ('"plan-json"', '"apply-json"', '"convert-preview"', '"import-register"', '"--server-name"', '"--path"'):
+            self.assertNotIn(forbidden, controller + panel)
         self.assertIn('run(["plan-stdin"], "plan", JSON.stringify(request))', controller)
+        self.assertIn('run(["convert-preview-stdin"], "convert", JSON.stringify(', controller)
+        self.assertIn('run(["import-register-stdin"], "import", JSON.stringify(', controller)
         self.assertIn("stdinEnabled: true", controller)
 
 

@@ -146,12 +146,12 @@ def open_directory_fd(path: str | Path, *, require_private_permissions: bool = T
     return fd
 
 
-def read_bytes(
+def read_bytes_with_parent(
     path: str | Path,
     *,
     max_size: int = MAX_FILE_SIZE,
     require_private_permissions: bool = True,
-) -> tuple[bytes, os.stat_result]:
+) -> tuple[bytes, os.stat_result, os.stat_result]:
     candidate = validate_path(
         path,
         allow_missing=False,
@@ -192,10 +192,24 @@ def read_bytes(
         data = b"".join(chunks)
         if len(data) > max_size:
             raise UnsafePathError("source is too large")
-        return data, info
+        return data, info, os.fstat(dir_fd)
     finally:
         os.close(fd)
         os.close(dir_fd)
+
+
+def read_bytes(
+    path: str | Path,
+    *,
+    max_size: int = MAX_FILE_SIZE,
+    require_private_permissions: bool = True,
+) -> tuple[bytes, os.stat_result]:
+    data, info, _parent_info = read_bytes_with_parent(
+        path,
+        max_size=max_size,
+        require_private_permissions=require_private_permissions,
+    )
+    return data, info
 
 
 def decode_source(data: bytes) -> str:
@@ -207,9 +221,9 @@ def decode_source(data: bytes) -> str:
         raise UnsafePathError("source is not valid UTF-8") from None
 
 
-def metadata(info: os.stat_result, data: bytes) -> dict[str, int | str]:
+def metadata(info: os.stat_result, data: bytes, parent_info: os.stat_result | None = None) -> dict[str, int | str]:
     digest = hashlib.sha256(data).hexdigest()
-    return {
+    result: dict[str, int | str] = {
         "fingerprint": f"sha256:{digest}",
         "size": int(info.st_size),
         "device": int(info.st_dev),
@@ -217,6 +231,10 @@ def metadata(info: os.stat_result, data: bytes) -> dict[str, int | str]:
         "mode": int(stat.S_IMODE(info.st_mode)),
         "mtimeNs": int(info.st_mtime_ns),
     }
+    if parent_info is not None:
+        result["parentDevice"] = int(parent_info.st_dev)
+        result["parentInode"] = int(parent_info.st_ino)
+    return result
 
 
 def source_display(path: str | Path) -> str:

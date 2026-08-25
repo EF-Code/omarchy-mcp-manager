@@ -470,7 +470,7 @@ Panel {
 
           ServerEditor { visible: root.editorOpen; server: root.editingServer; sourceId: root.selectedSource ? String(root.selectedSource.sourceId) : ""; foreground: root.foreground; onSaveRequested: root.editorSave(value); onCancelled: root.editorOpen = false }
 
-          ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.run(["import-register", "--path", path, "--adapter", adapter, "--mode", mode], "import") }; onCancelled: root.importOpen = false }
+          ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.registerImport(path, adapter, mode) }; onCancelled: root.importOpen = false }
 
           ConfirmSheet {
             visible: !!backend.pendingPlan

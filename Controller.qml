@@ -70,7 +70,11 @@ QtObject {
   function compare() { run(["compare"], "compare") }
 
   function convertPreview(sourceId, serverName, targetAdapter) {
-    run(["convert-preview", "--source-id", String(sourceId), "--server-name", String(serverName), "--target-adapter", String(targetAdapter)], "convert")
+    run(["convert-preview-stdin"], "convert", JSON.stringify({ sourceId: String(sourceId), serverName: String(serverName), targetAdapter: String(targetAdapter) }))
+  }
+
+  function registerImport(path, adapter, mode) {
+    run(["import-register-stdin"], "import", JSON.stringify({ path: String(path), adapter: String(adapter), mode: String(mode) }))
   }
 
   function handle(action, value) {

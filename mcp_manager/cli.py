@@ -49,6 +49,13 @@ def _stdin_request() -> dict[str, Any]:
     return value
 
 
+def _request_text(request: dict[str, Any], key: str, *, limit: int = 8192) -> str:
+    value = request.get(key)
+    if not isinstance(value, str) or not value or len(value) > limit or "\x00" in value:
+        raise CliUsageError("request contains an invalid field")
+    return value
+
+
 class CliUsageError(ValueError):
     pass
 
@@ -79,19 +86,10 @@ def _arg_parser() -> argparse.ArgumentParser:
     hist.add_argument("--limit", type=int, default=20)
     sub.add_parser("doctor")
     sub.add_parser("compare")
-    convert = sub.add_parser("convert-preview")
-    convert.add_argument("--source-id", required=True)
-    convert.add_argument("--server-name", required=True)
-    convert.add_argument("--target-adapter", required=True)
-    convert_batch = sub.add_parser("convert-batch-preview")
-    convert_batch.add_argument("--source-id", required=True)
-    convert_batch.add_argument("--server-name", required=True)
-    convert_batch.add_argument("--target-adapter", action="append", required=True)
+    sub.add_parser("convert-preview-stdin")
+    sub.add_parser("convert-batch-preview-stdin")
     sub.add_parser("recover")
-    register = sub.add_parser("import-register")
-    register.add_argument("--path", required=True)
-    register.add_argument("--adapter", required=True)
-    register.add_argument("--mode", choices=("read", "manage"), default="read")
+    sub.add_parser("import-register-stdin")
     forget = sub.add_parser("import-forget")
     forget.add_argument("--source-id", required=True)
     return parser
@@ -153,14 +151,19 @@ def main(argv: list[str] | None = None) -> int:
         if op == "compare":
             result = scan()
             return _print(response(op, ok=True, data=comparison(public_scan(result))))
-        if op == "convert-preview":
+        if op == "convert-preview-stdin":
+            request = _stdin_request()
             result = public_scan(scan())
-            server = find_server(result, args.source_id, args.server_name)
-            return _print(response(op, ok=True, data=conversion_preview(server, args.target_adapter)))
-        if op == "convert-batch-preview":
+            server = find_server(result, _request_text(request, "sourceId", limit=128), _request_text(request, "serverName", limit=128))
+            return _print(response(op, ok=True, data=conversion_preview(server, _request_text(request, "targetAdapter", limit=64))))
+        if op == "convert-batch-preview-stdin":
+            request = _stdin_request()
+            targets = request.get("targetAdapters")
+            if not isinstance(targets, list) or not targets or not all(isinstance(item, str) and 0 < len(item) <= 64 for item in targets):
+                raise CliUsageError("request contains invalid target adapters")
             result = public_scan(scan())
-            server = find_server(result, args.source_id, args.server_name)
-            return _print(response(op, ok=True, data=conversion_batch_preview(server, args.target_adapter)))
+            server = find_server(result, _request_text(request, "sourceId", limit=128), _request_text(request, "serverName", limit=128))
+            return _print(response(op, ok=True, data=conversion_batch_preview(server, targets)))
         if op == "plan":
             return _print(response(op, ok=True, data=plan(_request(args.request_file))))
         if op == "plan-stdin":
@@ -175,8 +178,12 @@ def main(argv: list[str] | None = None) -> int:
             return _print(response(op, ok=True, data={"entries": history(args.limit)}))
         if op == "recover":
             return _print(response(op, ok=True, data=recover()))
-        if op == "import-register":
-            return _print(response(op, ok=True, data=_register(args.path, args.adapter, args.mode)))
+        if op == "import-register-stdin":
+            request = _stdin_request()
+            mode = _request_text(request, "mode", limit=16)
+            if mode not in {"read", "manage"}:
+                raise CliUsageError("request contains an invalid import mode")
+            return _print(response(op, ok=True, data=_register(_request_text(request, "path"), _request_text(request, "adapter", limit=64), mode)))
         if op == "import-forget":
             return _print(response(op, ok=True, data=_forget(args.source_id)))
         raise KeyError("unsupported operation")

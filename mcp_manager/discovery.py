@@ -11,7 +11,7 @@ from typing import Any
 from .adapters import Adapter, SourceSpec, adapter_by_id, adapters, normalized_servers, parse_source, writer_supported
 from .diagnostics import cross_source_diagnostics, server_diagnostics, source_diagnostics
 from .model import MAX_IMPORTS, MAX_SERVERS, deep_limit, stable_id
-from .paths import (UnsafePathError, decode_source, manager_dirs, metadata, read_bytes,
+from .paths import (UnsafePathError, decode_source, manager_dirs, metadata, read_bytes, read_bytes_with_parent,
                     source_display, validate_path)
 from .redaction import sanitize_text
 
@@ -135,10 +135,10 @@ def _source_record(adapter: Adapter, spec: SourceSpec, source_id: str, default_i
         # Discovery may inspect an overly broad but user-owned regular file so
         # users can see and diagnose its redacted MCP definitions. Mutation
         # safety remains strict and is evaluated independently below.
-        data, info = read_bytes(spec.path, require_private_permissions=False)
+        data, info, parent_info = read_bytes_with_parent(spec.path, require_private_permissions=False)
         text = decode_source(data)
         record["exists"] = True
-        file_meta = metadata(info, data)
+        file_meta = metadata(info, data, parent_info)
         record["fingerprint"] = file_meta["fingerprint"]
         record["_metadata"] = file_meta
         parsed = parse_source(adapter, text, spec.path)
