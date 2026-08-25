@@ -16,7 +16,7 @@ from .json_source import loads as strict_json_loads
 from .model import stable_id
 from .paths import UnsafePathError, decode_source, manager_dirs, read_bytes, source_display, validate_path
 from .planner import PlanError, apply as apply_plan, plan, plan_restore
-from .redaction import contains_secret_material, response_safe, sanitize_text
+from .redaction import response_safe, sanitize_text
 from .transaction import TransactionError, atomic_file, history, read_json, recover
 
 
@@ -32,6 +32,20 @@ def _request(path_text: str) -> dict[str, Any]:
     value = strict_json_loads(data.decode("utf-8"), jsonc=False)
     if not isinstance(value, dict):
         raise PlanError("request file must contain one object")
+    return value
+
+
+def _stdin_request() -> dict[str, Any]:
+    """Read one bounded JSON object without placing request data in argv."""
+
+    raw = sys.stdin.readline(64 * 1024 + 1)
+    if raw == "":
+        raise CliUsageError("request JSON is required on stdin")
+    if len(raw.encode("utf-8")) > 64 * 1024:
+        raise CliUsageError("request JSON is too large")
+    value = strict_json_loads(raw, jsonc=False)
+    if not isinstance(value, dict):
+        raise CliUsageError("request JSON must be an object")
     return value
 
 
@@ -52,14 +66,12 @@ def _arg_parser() -> argparse.ArgumentParser:
     source.add_argument("source_id")
     plan_parser = sub.add_parser("plan")
     plan_parser.add_argument("--request-file", required=True)
-    plan_json_parser = sub.add_parser("plan-json")
-    plan_json_parser.add_argument("--json", required=True)
+    sub.add_parser("plan-stdin")
     apply_parser = sub.add_parser("apply")
     apply_parser.add_argument("--plan-id", required=True)
     apply_parser.add_argument("--request-file", required=True)
-    apply_json_parser = sub.add_parser("apply-json")
-    apply_json_parser.add_argument("--plan-id", required=True)
-    apply_json_parser.add_argument("--json", required=False, default="{}")
+    apply_stdin_parser = sub.add_parser("apply-stdin")
+    apply_stdin_parser.add_argument("--plan-id", required=True)
     restore = sub.add_parser("restore")
     restore.add_argument("--backup-id", required=True)
     restore.add_argument("--source-id", required=True)
@@ -151,26 +163,12 @@ def main(argv: list[str] | None = None) -> int:
             return _print(response(op, ok=True, data=conversion_batch_preview(server, args.target_adapter)))
         if op == "plan":
             return _print(response(op, ok=True, data=plan(_request(args.request_file))))
-        if op == "plan-json":
-            request = strict_json_loads(args.json, jsonc=False)
-            if not isinstance(request, dict):
-                raise PlanError("request JSON must be an object")
-            if "secretReplacements" in request:
-                raise PlanError("secret replacements require an owner-only request file")
-            if contains_secret_material(request):
-                raise PlanError("raw secret material is not accepted in argv")
-            return _print(response(op, ok=True, data=plan(request)))
+        if op == "plan-stdin":
+            return _print(response(op, ok=True, data=plan(_stdin_request())))
         if op == "apply":
             return _print(response(op, ok=True, data=apply_plan(args.plan_id, _request(args.request_file))))
-        if op == "apply-json":
-            request = strict_json_loads(args.json, jsonc=False)
-            if not isinstance(request, dict):
-                raise PlanError("request JSON must be an object")
-            if "secretReplacements" in request:
-                raise PlanError("secret replacements require an owner-only request file")
-            if contains_secret_material(request):
-                raise PlanError("raw secret material is not accepted in argv")
-            return _print(response(op, ok=True, data=apply_plan(args.plan_id, request)))
+        if op == "apply-stdin":
+            return _print(response(op, ok=True, data=apply_plan(args.plan_id, _stdin_request())))
         if op == "restore":
             return _print(response(op, ok=True, data=plan_restore(args.backup_id, args.source_id)))
         if op == "history":

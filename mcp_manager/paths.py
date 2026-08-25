@@ -118,6 +118,34 @@ def validate_path(
     return candidate
 
 
+def open_directory_fd(path: str | Path, *, require_private_permissions: bool = True) -> int:
+    """Open a directory through an fd-relative, no-follow component walk."""
+
+    candidate = _absolute(path)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open("/", flags)
+        for part in candidate.parts[1:]:
+            try:
+                next_fd = os.open(part, flags, dir_fd=fd)
+            except OSError:
+                os.close(fd)
+                raise
+            os.close(fd)
+            fd = next_fd
+    except OSError as exc:
+        raise UnsafePathError("directory path changed or is unavailable") from exc
+    info = os.fstat(fd)
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or (require_private_permissions and stat.S_IMODE(info.st_mode) & 0o022)
+    ):
+        os.close(fd)
+        raise UnsafePathError("directory ownership or mode is unsafe")
+    return fd
+
+
 def read_bytes(
     path: str | Path,
     *,
@@ -129,16 +157,26 @@ def read_bytes(
         allow_missing=False,
         require_private_permissions=require_private_permissions,
     )
-    before = os.lstat(candidate)
+    dir_fd = open_directory_fd(candidate.parent, require_private_permissions=require_private_permissions)
+    try:
+        before = os.stat(candidate.name, dir_fd=dir_fd, follow_symlinks=False)
+    except OSError as exc:
+        os.close(dir_fd)
+        raise UnsafePathError("cannot inspect source safely") from exc
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
-        fd = os.open(candidate, flags)
+        fd = os.open(candidate.name, flags, dir_fd=dir_fd)
     except OSError as exc:
+        os.close(dir_fd)
         raise UnsafePathError(f"cannot open source: {exc.strerror or 'open failed'}") from None
     try:
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
-            raise UnsafePathError("source changed ownership or type")
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or (require_private_permissions and stat.S_IMODE(info.st_mode) & 0o022)
+        ):
+            raise UnsafePathError("source changed ownership, permissions, or type")
         if (info.st_dev, info.st_ino) != (before.st_dev, before.st_ino):
             raise UnsafePathError("source changed while opening")
         if info.st_size > max_size:
@@ -157,6 +195,7 @@ def read_bytes(
         return data, info
     finally:
         os.close(fd)
+        os.close(dir_fd)
 
 
 def decode_source(data: bytes) -> str:
@@ -186,13 +225,24 @@ def source_display(path: str | Path) -> str:
 
 def safe_directory(path: Path) -> None:
     candidate = _absolute(path)
-    _check_components(candidate, allow_missing=True)
-    candidate.mkdir(mode=0o700, parents=True, exist_ok=True)
-    _check_components(candidate, allow_missing=False)
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = -1
     try:
-        fd = os.open(candidate, flags)
+        fd = os.open("/", flags)
+        for part in candidate.parts[1:]:
+            try:
+                next_fd = os.open(part, flags, dir_fd=fd)
+            except FileNotFoundError:
+                try:
+                    os.mkdir(part, 0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass
+                next_fd = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
     except OSError as exc:
+        if fd >= 0:
+            os.close(fd)
         raise UnsafePathError("private state directory is unavailable") from exc
     try:
         info = os.fstat(fd)

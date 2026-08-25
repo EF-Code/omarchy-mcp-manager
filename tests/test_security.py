@@ -7,6 +7,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from mcp_manager.cli import main as cli_main
 from mcp_manager.paths import UnsafePathError, manager_dirs, metadata, read_bytes, validate_path
@@ -71,6 +72,46 @@ class SecurityTests(unittest.TestCase):
                 self.assertEqual(path.read_text(encoding="utf-8"), "external\n")
             finally:
                 for key, value in saved.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+
+    def test_intermediate_directory_swap_is_rejected_before_mutation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            parent = root / "source"
+            parent.mkdir()
+            path = parent / "config.json"
+            path.write_text("old\n", encoding="utf-8")
+            attacker = root / "attacker"
+            attacker.mkdir()
+            attacker_path = attacker / "config.json"
+            attacker_path.write_text("attacker\n", encoding="utf-8")
+            moved = root / "source-moved"
+            old_env = {key: os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR")}
+            try:
+                os.environ.update({"XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"), "XDG_RUNTIME_DIR": str(root / "runtime")})
+                original, info = read_bytes(path)
+                real_validate = validate_path
+                calls = 0
+
+                def swap_after_validation(candidate, **kwargs):
+                    nonlocal calls
+                    result = real_validate(candidate, **kwargs)
+                    calls += 1
+                    if calls == 2:
+                        parent.rename(moved)
+                        parent.symlink_to(attacker, target_is_directory=True)
+                    return result
+
+                with mock.patch("mcp_manager.transaction.validate_path", side_effect=swap_after_validation):
+                    with self.assertRaises(UnsafePathError):
+                        commit("src-swap", path, b"new\n", metadata(info, original), operation_id="op-swap", history_entry={"action": "test"})
+                self.assertEqual((moved / "config.json").read_text(encoding="utf-8"), "old\n")
+                self.assertEqual(attacker_path.read_text(encoding="utf-8"), "attacker\n")
+            finally:
+                for key, value in old_env.items():
                     if value is None:
                         os.environ.pop(key, None)
                     else:
@@ -297,12 +338,12 @@ class SecurityTests(unittest.TestCase):
                     else:
                         os.environ[key] = value
 
-    def test_cli_errors_are_one_secret_safe_json_object(self):
-        secret = "fixture-argv-secret-48391"
+    def test_cli_stdin_errors_are_one_secret_safe_json_object(self):
+        secret = "fixture-stdin-secret-48391"
         output = io.StringIO()
         request = json.dumps({"sourceId": "src_deadbeef", "action": "upsert-server", "serverName": "x", "payload": {"command": "tool", "args": ["--api-key=" + secret]}})
-        with contextlib.redirect_stdout(output):
-            code = cli_main(["plan-json", "--json", request])
+        with contextlib.redirect_stdout(output), mock.patch("sys.stdin", io.StringIO(request + "\n")):
+            code = cli_main(["plan-stdin"])
         rendered = output.getvalue()
         self.assertEqual(code, 1)
         self.assertEqual(len(rendered.splitlines()), 1)
@@ -310,18 +351,31 @@ class SecurityTests(unittest.TestCase):
         self.assertFalse(json.loads(rendered)["ok"])
 
         output = io.StringIO()
-        with contextlib.redirect_stdout(output):
-            code = cli_main(["plan-json"])
+        with contextlib.redirect_stdout(output), mock.patch("sys.stdin", io.StringIO("")):
+            code = cli_main(["plan-stdin"])
         self.assertEqual(code, 1)
         self.assertEqual(len(output.getvalue().splitlines()), 1)
         self.assertEqual(json.loads(output.getvalue())["error"]["code"], "invalid-request")
 
         output = io.StringIO()
         duplicate = '{"sourceId":"one","sourceId":"two","action":"remove-server","serverName":"x"}'
-        with contextlib.redirect_stdout(output):
-            code = cli_main(["plan-json", "--json", duplicate])
+        with contextlib.redirect_stdout(output), mock.patch("sys.stdin", io.StringIO(duplicate + "\n")):
+            code = cli_main(["plan-stdin"])
         self.assertEqual(code, 1)
         self.assertEqual(json.loads(output.getvalue())["error"]["code"], "invalid-request")
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = cli_main(["plan-json", "--json", request])
+        self.assertEqual(code, 1)
+        self.assertNotIn(secret, output.getvalue())
+
+    def test_qml_never_places_request_json_in_process_arguments(self):
+        controller = (Path(__file__).parent.parent / "Controller.qml").read_text(encoding="utf-8")
+        self.assertNotIn('"plan-json"', controller)
+        self.assertNotIn('"apply-json"', controller)
+        self.assertIn('run(["plan-stdin"], "plan", JSON.stringify(request))', controller)
+        self.assertIn("stdinEnabled: true", controller)
 
 
 if __name__ == "__main__":

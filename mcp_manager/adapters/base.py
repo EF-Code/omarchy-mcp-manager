@@ -56,6 +56,10 @@ def _claude_path(data: dict[str, Any], _source: str) -> list[str] | None:
     return path if path == ["mcpServers"] else None
 
 
+def _gemini_path(data: dict[str, Any], _source: str) -> list[str] | None:
+    return ["mcpServers"] if isinstance(data.get("mcpServers"), dict) else None
+
+
 def _opencode_path(data: dict[str, Any], _source: str) -> list[str] | None:
     mcp = data.get("mcp") if isinstance(data, dict) else None
     if isinstance(mcp, dict) and isinstance(mcp.get("servers"), dict):
@@ -279,7 +283,7 @@ _ADAPTERS = (
     _adapter("codex", "Codex", ("codex",), "read-write", ("toml",), _codex_specs, _codex_path, "Targeted mcp_servers TOML table-family edits.", ("mcp_servers",)),
     _adapter("claude", "Claude Code", ("claude",), "read-write", ("json", "jsonc"), _claude_specs, _claude_path, "Project .mcp.json writes; user state is sensitive and read-only.", ("mcpServers",)),
     _adapter("opencode", "OpenCode", ("opencode",), "read-write", ("json", "jsonc"), _opencode_specs, _opencode_path, "Preserves legacy mcp and v2 mcp.servers shapes.", ("mcp", "servers")),
-    _adapter("gemini", "Gemini CLI", ("gemini", "gemini-cli"), "read-write", ("json", "jsonc"), _gemini_specs, _json_path, "Targeted mcpServers edits; policy fields remain visible.", ("mcpServers",)),
+    _adapter("gemini", "Gemini CLI", ("gemini", "gemini-cli"), "read-write", ("json", "jsonc"), _gemini_specs, _gemini_path, "Targeted mcpServers edits; policy fields remain visible.", ("mcpServers",)),
     _adapter("antigravity", "Antigravity", ("agy", "antigravity"), "read-write", ("json", "jsonc"), _antigravity_specs, _antigravity_path, "Ordered version-tolerant candidates; preserves detected field spelling.", ("mcpServers",)),
     _adapter("copilot", "GitHub Copilot CLI", ("copilot", "gh-copilot"), "read-write", ("json", "jsonc"), _copilot_specs, _json_path, "User and project precedence are shown separately.", ("mcpServers",)),
     _adapter("crush", "Crush", ("crush",), "read-only", ("json", "jsonc"), _crush_specs, _json_path, "crushrc is executable configuration and is never evaluated or rewritten."),

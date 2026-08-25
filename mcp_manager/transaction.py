@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .model import MAX_FILE_SIZE, stable_id
-from .paths import UnsafePathError, metadata, manager_dirs, read_bytes, safe_directory, validate_path
+from .paths import UnsafePathError, metadata, manager_dirs, open_directory_fd, read_bytes, safe_directory, validate_path
 from .redaction import sanitize_text
 
 
@@ -32,22 +32,7 @@ def _json_bytes(value: Any) -> bytes:
 def _open_directory(path: Path, *, private: bool) -> int:
     if private:
         safe_directory(path)
-    expected = os.lstat(path)
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        fd = os.open(path, flags)
-    except OSError as exc:
-        raise UnsafePathError("directory changed or is unavailable") from exc
-    info = os.fstat(fd)
-    if (
-        not stat.S_ISDIR(info.st_mode)
-        or info.st_uid != os.getuid()
-        or stat.S_IMODE(info.st_mode) & 0o022
-        or (info.st_dev, info.st_ino) != (expected.st_dev, expected.st_ino)
-    ):
-        os.close(fd)
-        raise UnsafePathError("directory ownership, mode, or identity is unsafe")
-    return fd
+    return open_directory_fd(path, require_private_permissions=True)
 
 
 def _target_info(dir_fd: int, name: str) -> os.stat_result | None:
@@ -147,8 +132,9 @@ class OwnerLock:
 
     def __enter__(self) -> "OwnerLock":
         flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+        dir_fd = open_directory_fd(self.path.parent, require_private_permissions=True)
         try:
-            self.fd = os.open(self.path, flags, 0o600)
+            self.fd = os.open(self.path.name, flags, 0o600, dir_fd=dir_fd)
             info = os.fstat(self.fd)
             if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
                 raise TransactionError("owner-only lock file is unsafe")
@@ -167,6 +153,8 @@ class OwnerLock:
                 os.close(self.fd)
                 self.fd = None
             raise
+        finally:
+            os.close(dir_fd)
         return self
 
     def __exit__(self, _type: object, _value: object, _traceback: object) -> None:

@@ -78,6 +78,24 @@ class AdapterTests(unittest.TestCase):
         normalized = normalized_servers(gemini, parse_source(gemini, changed, Path("settings.json")), "src_test")[0]
         self.assertEqual(normalized["transport"], "http")
 
+    def test_gemini_ignores_unrelated_top_level_servers_object(self):
+        adapter = adapter_by_id("gemini")
+        source = '{"servers":{"not-mcp":{"command":"leave-alone"}},"theme":"dark"}'
+        parsed = parse_source(adapter, source, Path("settings.json"))
+        self.assertEqual(parsed["mcpPath"], ["mcpServers"])
+        self.assertEqual(parsed["servers"], {})
+        changed = patch_source(
+            adapter,
+            source,
+            Path("settings.json"),
+            action="upsert-server",
+            name="actual-mcp",
+            payload={"name": "actual-mcp", "command": "tool"},
+        )
+        reparsed = loads(changed)
+        self.assertEqual(reparsed["servers"], {"not-mcp": {"command": "leave-alone"}})
+        self.assertEqual(reparsed["mcpServers"]["actual-mcp"]["command"], "tool")
+
     def test_duplicate_keys_are_rejected(self):
         with self.assertRaises(DuplicateKeyError):
             loads('{"mcpServers": {}, "mcpServers": {}}')
@@ -110,6 +128,8 @@ class AdapterTests(unittest.TestCase):
         self.assertNotIn("alpha", renamed_parsed["servers"])
         self.assertEqual(renamed_parsed["servers"]["renamed"]["command"], "printf")
         self.assertIn('"keep": true', renamed)
+        self.assertIn("// selected comment", renamed)
+        self.assertLess(renamed.index('"renamed"'), renamed.index('"command": "printf"'))
 
     def test_json_nested_secret_fields_merge_without_replacing_unknown_values(self):
         adapter = adapter_by_id("gemini")

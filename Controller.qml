@@ -21,7 +21,7 @@ QtObject {
   property bool queuedRefresh: false
   readonly property string helperPath: decodeURIComponent(String(Qt.resolvedUrl("scripts/mcp-managerctl")).replace(/^file:\/\//, ""))
 
-  function run(args, action) {
+  function run(args, action, stdinPayload) {
     if (helper.running) {
       if (action === "scan") queuedRefresh = true
       else {
@@ -32,6 +32,7 @@ QtObject {
     }
     pendingAction = action
     loading = true
+    helper.stdinPayload = stdinPayload === undefined ? "" : String(stdinPayload)
     helper.command = [root.helperPath].concat(args)
     helper.running = true
     return true
@@ -48,7 +49,7 @@ QtObject {
 
   function requestPlan(request) {
     pendingRequest = request
-    if (!run(["plan-json", "--json", JSON.stringify(request)], "plan")) pendingRequest = null
+    if (!run(["plan-stdin"], "plan", JSON.stringify(request))) pendingRequest = null
   }
 
   function requestRestore(backupId, sourceId) {
@@ -63,7 +64,7 @@ QtObject {
 
   function applyPending() {
     if (!pendingPlan) return
-    run(["apply-json", "--plan-id", String(pendingPlan.planId), "--json", JSON.stringify(pendingRequest || {})], "apply")
+    run(["apply-stdin", "--plan-id", String(pendingPlan.planId)], "apply", JSON.stringify(pendingRequest || {}))
   }
 
   function compare() { run(["compare"], "compare") }
@@ -127,6 +128,12 @@ QtObject {
 
   property var helperProcess: Process {
     id: helper
+    property string stdinPayload: ""
+    stdinEnabled: true
+    onStarted: {
+      if (stdinPayload !== "") write(stdinPayload + "\n")
+      stdinPayload = ""
+    }
     stdout: StdioCollector { id: stdoutCollector; waitForEnd: true }
     stderr: StdioCollector { id: stderrCollector; waitForEnd: true }
     onExited: function(exitCode) {

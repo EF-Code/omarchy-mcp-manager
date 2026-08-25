@@ -348,13 +348,25 @@ def apply_operation(source: str, *, jsonc: bool, mcp_path: list[str], action: st
         if find_member(container, desired_name):
             raise SourceParseError("server name already exists")
         if existing_member:
-            merged = merge_dict(existing_member.value_node.value, desired)
-            added = object_add(source, container, desired_name, merged)
-            added_root = parse(added, jsonc=jsonc)
-            added_container = find_node(added_root, mcp_path)
-            if added_container is None:
+            # Apply field edits in place first, then replace only the key token.
+            # Rebuilding the whole member would discard comments and formatting.
+            changed = apply_operation(
+                source,
+                jsonc=jsonc,
+                mcp_path=mcp_path,
+                action="upsert-server",
+                name=name,
+                payload={"name": name, **desired},
+            )
+            changed_root = parse(changed, jsonc=jsonc)
+            changed_container = find_node(changed_root, mcp_path)
+            if changed_container is None:
                 raise SourceParseError("recognized MCP object disappeared during rename")
-            return object_remove(added, added_container, name)
+            changed_member = find_member(changed_container, name)
+            if changed_member is None:
+                raise SourceParseError("server definition disappeared during rename")
+            rendered_name = json.dumps(desired_name, ensure_ascii=False)
+            return changed[: changed_member.key_node.start] + rendered_name + changed[changed_member.key_node.end :]
         return object_add(source, container, desired_name, desired)
     if action == "duplicate-server":
         if existing_member is None:
