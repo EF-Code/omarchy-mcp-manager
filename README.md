@@ -56,6 +56,13 @@ Manual imports are explicit. Register read-only for the safest inspection, or
 choose manage-in-place only for the exact file after reviewing the warning.
 MCP Manager stores the path and authorization mode, never the file contents.
 
+Cross-agent copy selects the destination agent's highest-precedence writable
+source and shows the converted, secret-safe payload first. Choose **Copy to…**
+to generate the destination's redacted textual diff, then choose **Apply** to
+commit it. Existing destination names are disclosed before planning. Embedded
+URL credentials, credential-bearing arguments, environment values, and HTTP
+header values are never copied automatically.
+
 User-owned regular files with overly broad permissions remain visible through
 the redacted read-only model so the problem can be diagnosed. Editing stays
 disabled until the source file and its containing directory are owner-only;
@@ -93,8 +100,8 @@ locations. Backups should be retained if they may be needed for recovery.
 
 ## Development and evidence
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md),
-[SECURITY_AUDIT.md](SECURITY_AUDIT.md), and [CHANGELOG.md](CHANGELOG.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and
+[CHANGELOG.md](CHANGELOG.md).
 Static validation, automated tests, live local
 Omarchy interaction, and externally verified compatibility are separate
 evidence levels; this repository does not claim more than it has tested.
@@ -106,5 +113,4 @@ Category: `Developer Tools`
 Tags: `ai`, `bar`, `quickshell`  
 Suggested missing tag: `mcp`
 
-Submission issue text is prepared in `docs/marketplace-submission.md` and is
-intentionally not opened or submitted without owner approval.
+The active submission is [marketplace issue #2315](https://github.com/HANCORE-linux/omarchy-plugin-marketplace/issues/2315).

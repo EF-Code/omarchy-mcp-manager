@@ -233,6 +233,18 @@ function agentNameById(agents, id) {
   return match ? String(match.name || match.id || wanted) : wanted
 }
 
+function conversionPlanRequest(preview) {
+  if (!preview || preview.canApply !== true || !preview.targetSourceId || !preview.payload) return null
+  var name = String(preview.payload.name || "")
+  if (!name) return null
+  return {
+    sourceId: String(preview.targetSourceId),
+    action: "copy-server",
+    serverName: name,
+    payload: preview.payload
+  }
+}
+
 function historyForSource(entries, sourceId) {
   return (Array.isArray(entries) ? entries : []).filter(function(entry) {
     return entry && String(entry.sourceId || "") === String(sourceId || "")
@@ -246,6 +258,6 @@ if (typeof module !== "undefined") {
     parseResponse, agentsFrom, sourcesFrom, serversFrom, diagnosticCount,
     serverCount, wrapIndex, nextIndex, clampedIndex, responsiveMode, badgeForSource,
     badgeForAgent, diffLines, summary, diagnosticGuidance, diagnosticEntries, keyHelp, duplicatePayload,
-    writableAgentIds, agentNameById, historyForSource
+    writableAgentIds, agentNameById, conversionPlanRequest, historyForSource
   }
 }

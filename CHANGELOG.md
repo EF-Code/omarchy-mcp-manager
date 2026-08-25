@@ -2,6 +2,14 @@
 
 All notable changes to MCP Manager are documented here.
 
+## [1.1.0] - 2026-08-25
+
+- Completed cross-agent copying: a conversion preview now identifies the exact
+  writable destination source and can prepare a fingerprint-bound destination
+  diff followed by explicit Apply confirmation.
+- Added target-name collision warnings and kept conversions containing hidden
+  URL or command material preview-only.
+
 ## [1.0.7] - 2026-08-25
 
 - Fixed zero-value summary handling so ignoring or clearing findings immediately

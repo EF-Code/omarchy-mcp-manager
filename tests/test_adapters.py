@@ -208,8 +208,14 @@ class AdapterTests(unittest.TestCase):
         server = {"name": "remote", "transport": "sse", "url": {"display": "https://example.test/mcp?token=<redacted>", "state": "set"}, "headers": [{"name": "Authorization", "state": "set"}], "environment": []}
         preview = conversion_preview(server, "codex")
         self.assertTrue(preview["lossy"])
+        self.assertFalse(preview["canApply"])
+        self.assertNotIn("url", preview["payload"])
         self.assertTrue(any("secret" in warning.lower() or "header" in warning.lower() for warning in preview["warnings"]))
         self.assertNotIn("real", repr(preview))
+
+        command_preview = conversion_preview({"name": "local", "transport": "stdio", "command": "tool", "args": ["--token", "<secret hidden>"]}, "codex")
+        self.assertFalse(command_preview["canApply"])
+        self.assertNotIn("command", command_preview["payload"])
 
     def test_conversion_batch_reports_partial_failure_without_aborting(self):
         server = {"name": "local", "transport": "stdio", "command": "echo", "args": [], "environment": [], "headers": []}
@@ -217,6 +223,24 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(len(preview["results"]), 1)
         self.assertEqual(len(preview["failures"]), 1)
         self.assertTrue(preview["partialFailure"])
+
+    def test_conversion_blocks_a_shadowed_destination(self):
+        server = {"name": "alpha", "transport": "stdio", "command": "echo", "args": [], "environment": [], "headers": []}
+        target_scan = {"agents": [{"id": "antigravity", "sources": [
+            {"sourceId": "src_high", "precedence": 120, "writable": False, "servers": [{"name": "alpha"}]},
+            {"sourceId": "src_target", "precedence": 100, "writable": True, "pathDisplay": "~/target.json", "scope": "user", "servers": []},
+        ]}]}
+        preview = conversion_preview(server, "antigravity", target_scan)
+        self.assertFalse(preview["canApply"])
+        self.assertTrue(any("shadowed" in warning for warning in preview["warnings"]))
+
+    def test_codex_overwrite_preserves_existing_destination_credentials(self):
+        adapter = adapter_by_id("codex")
+        source = '[mcp_servers."dune"]\nurl = "https://old.test/mcp"\n\n[mcp_servers."dune".http_headers]\nAuthorization = "fixture-destination-credential"\n'
+        changed = patch_source(adapter, source, Path("config.toml"), action="upsert-server", name="dune", payload={"name": "dune", "url": "https://new.test/mcp"})
+        parsed = parse_source(adapter, changed, Path("config.toml"))["servers"]["dune"]
+        self.assertEqual(parsed["url"], "https://new.test/mcp")
+        self.assertEqual(parsed["http_headers"]["Authorization"], "fixture-destination-credential")
 
     def test_comparison_matrix_has_agent_columns(self):
         result = comparison({"agents": [{"id": "codex", "name": "Codex", "sources": [{"sourceId": "s", "servers": [{"name": "alpha", "enabled": True, "transport": "stdio"}]}]}]})

@@ -32,6 +32,7 @@ Panel {
   property string pendingForgetSourceId: ""
   property string pendingAction: ""
   property string conversionTarget: "codex"
+  property string pendingCopyTargetName: ""
   property bool keyboardReturnPending: false
 
   property var backend: Controller { id: backendObject }
@@ -134,6 +135,22 @@ Panel {
     closeUtilityViews()
     conversionOpen = true
     backend.convertPreview(String(selectedSource.sourceId), String(selectedServer.name), conversionTarget)
+    revealUtilityView()
+  }
+
+  function prepareConversionCopy() {
+    var preview = backend.conversionPreview
+    var request = Model.conversionPlanRequest(preview)
+    if (!request) {
+      backend.statusWarning = true
+      backend.statusMessage = "This conversion cannot be applied safely"
+      return
+    }
+    pendingCopyTargetName = String(preview.targetName || "target")
+    conversionOpen = false
+    backend.conversionPreview = null
+    pendingAction = "copy-server"
+    backend.requestPlan(request)
     revealUtilityView()
   }
 
@@ -355,9 +372,9 @@ Panel {
           ConfirmSheet {
             visible: !!backend.pendingPlan
             preview: backend.pendingPlan ? backend.pendingPlan.preview : null
-            title: root.pendingAction === "remove-server" ? "Remove server?" : root.pendingAction === "restore" ? "Restore this backup?" : "Apply MCP change?"
+            title: root.pendingAction === "remove-server" ? "Remove server?" : root.pendingAction === "restore" ? "Restore this backup?" : root.pendingAction === "copy-server" ? "Copy server to " + root.pendingCopyTargetName + "?" : "Apply MCP change?"
             foreground: root.foreground
-            onCancelled: backend.pendingPlan = null
+            onCancelled: { backend.pendingPlan = null; root.pendingCopyTargetName = "" }
             onConfirmed: backend.applyPending()
           }
           ConfirmSheet {
@@ -412,7 +429,13 @@ Panel {
             onClearAllRequested: backend.ignoreAllDiagnostics()
             onRestoreAllRequested: backend.restoreAllDiagnostics()
           }
-          ConversionPreview { visible: root.conversionOpen && !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: { root.conversionOpen = false; backend.conversionPreview = null } }
+          ConversionPreview {
+            visible: root.conversionOpen && !!backend.conversionPreview
+            preview: backend.conversionPreview
+            foreground: root.foreground
+            onClosed: { root.conversionOpen = false; backend.conversionPreview = null }
+            onCopyRequested: root.prepareConversionCopy()
+          }
           HistorySheet {
             visible: root.historyOpen
             entries: backend.historyEntries

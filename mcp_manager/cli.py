@@ -177,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
             request = _stdin_request()
             result = public_scan(scan())
             server = find_server(result, _request_text(request, "sourceId", limit=128), _request_text(request, "serverName", limit=128))
-            return _print(response(op, ok=True, data=conversion_preview(server, _request_text(request, "targetAdapter", limit=64))))
+            return _print(response(op, ok=True, data=conversion_preview(server, _request_text(request, "targetAdapter", limit=64), result)))
         if op == "convert-batch-preview-stdin":
             request = _stdin_request()
             targets = request.get("targetAdapters")
@@ -185,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise CliUsageError("request contains invalid target adapters")
             result = public_scan(scan())
             server = find_server(result, _request_text(request, "sourceId", limit=128), _request_text(request, "serverName", limit=128))
-            return _print(response(op, ok=True, data=conversion_batch_preview(server, targets)))
+            return _print(response(op, ok=True, data=conversion_batch_preview(server, targets, result)))
         if op == "plan":
             return _print(response(op, ok=True, data=plan(_request(args.request_file))))
         if op == "plan-stdin":

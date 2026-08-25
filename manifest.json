@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.ef-code.mcp-manager",
   "name": "MCP Manager",
-  "version": "1.0.7",
+  "version": "1.1.0",
   "author": "EF-Code",
   "license": "MIT",
   "description": "Discover and safely manage MCP servers across your Omarchy coding agents.",

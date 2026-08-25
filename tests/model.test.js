@@ -41,6 +41,17 @@ assert.deepStrictEqual(model.writableAgentIds([
 ], 'codex'), ['gemini']);
 assert.strictEqual(model.agentNameById(data.agents, 'gemini'), 'Gemini CLI');
 assert.strictEqual(model.agentNameById(data.agents, 'missing'), 'missing');
+assert.deepStrictEqual(model.conversionPlanRequest({
+  canApply: true,
+  targetSourceId: 'src_target',
+  payload: { name: 'alpha', command: 'echo' }
+}), {
+  sourceId: 'src_target',
+  action: 'copy-server',
+  serverName: 'alpha',
+  payload: { name: 'alpha', command: 'echo' }
+});
+assert.strictEqual(model.conversionPlanRequest({ canApply: false, targetSourceId: 'src_target', payload: { name: 'alpha' } }), null);
 const diagnosticEntries = model.diagnosticEntries(data);
 assert.strictEqual(diagnosticEntries.length, 1);
 assert.strictEqual(diagnosticEntries[0].serverName, 'beta');

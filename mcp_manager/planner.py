@@ -121,12 +121,16 @@ def _store_plan(value: dict[str, Any]) -> None:
 
 def plan(request: dict[str, Any]) -> dict[str, Any]:
     source_id = str(request.get("sourceId", ""))
-    action = str(request.get("action", ""))
+    requested_action = str(request.get("action", ""))
+    action = requested_action
     name = str(request.get("serverName", request.get("name", "")))
     if not source_id or not action or not valid_name(name):
         raise PlanError("sourceId, action, and a valid serverName are required")
-    if action not in {"upsert-server", "duplicate-server", "remove-server", "set-enabled", "toggle-server"}:
+    if action not in {"upsert-server", "copy-server", "duplicate-server", "remove-server", "set-enabled", "toggle-server"}:
         raise PlanError("unsupported semantic action")
+    copy_intent = action == "copy-server"
+    if copy_intent:
+        action = "upsert-server"
     scan_result = scan()
     record = _source(scan_result, source_id)
     if not record.get("exists") or not record.get("writable"):
@@ -173,6 +177,11 @@ def plan(request: dict[str, Any]) -> dict[str, Any]:
     old_servers = _server_semantics(parsed, adapter, source_id)
     new_servers = _server_semantics(planned_parsed, adapter, source_id)
     warnings = ["Secrets are never included in plans or conversion previews."]
+    if copy_intent and server_exists:
+        warnings.append("The destination now contains this server name; Apply will update the existing definition.")
+        original = next((item for item in old_servers if item.get("name") == name), {})
+        if original.get("environment") or original.get("headers") or (isinstance(original.get("url"), dict) and original["url"].get("state") == "set") or any("<secret hidden>" in str(item) for item in original.get("args", []) or []):
+            warnings.append("Existing destination credential fields remain unchanged unless the redacted diff explicitly changes them.")
     if secret_fields:
         warnings.append("Secret fields will be set from an owner-only apply request: " + ", ".join(secret_fields))
     if action == "duplicate-server":
@@ -188,6 +197,7 @@ def plan(request: dict[str, Any]) -> dict[str, Any]:
         "sourceId": source_id,
         "base": current_meta,
         "action": action,
+        "intent": requested_action,
         "serverName": name,
         "payload": payload,
         "secretFields": secret_fields,
@@ -202,10 +212,10 @@ def plan(request: dict[str, Any]) -> dict[str, Any]:
         "sourceId": source_id,
         "baseFingerprint": current_meta["fingerprint"],
         "expiresAt": plan_value["expiresAt"],
-        "action": action,
+        "action": requested_action,
         "serverName": name,
         "preview": {
-            "semanticChanges": [{"action": action, "serverName": name, "resultName": desired_name, "secretFields": secret_fields}],
+            "semanticChanges": [{"action": requested_action, "serverName": name, "resultName": desired_name, "secretFields": secret_fields}],
             "textDiff": _diff(old_servers, new_servers, list(dict.fromkeys([name, desired_name]))),
             "warnings": plan_value["warnings"],
             "confirmRequired": True,

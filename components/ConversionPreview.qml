@@ -8,6 +8,7 @@ Rectangle {
   property var preview: null
   property color foreground: Color.foreground
   signal closed()
+  signal copyRequested()
   Layout.fillWidth: true
   implicitHeight: body.implicitHeight + Style.space(16)
   color: Qt.alpha(root.preview && root.preview.lossy ? Color.urgent : Color.accent, 0.10)
@@ -31,6 +32,15 @@ Rectangle {
       color: root.foreground
       font.family: Style.font.family
       font.pixelSize: Style.font.body
+    }
+    Text {
+      Layout.fillWidth: true
+      visible: !!(root.preview && root.preview.targetSourceDisplay)
+      text: root.preview ? "Destination: " + String(root.preview.targetSourceDisplay) + " · " + String(root.preview.targetScope || "source") : ""
+      color: Qt.alpha(root.foreground, 0.72)
+      font.family: Style.font.family
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.WordWrap
     }
     Text {
       Layout.fillWidth: true
@@ -58,6 +68,25 @@ Rectangle {
       color: Qt.alpha(root.foreground, 0.7)
       font.family: Style.font.family
       font.pixelSize: Style.font.caption
+    }
+    Text {
+      Layout.fillWidth: true
+      visible: !!(root.preview && root.preview.canApply)
+      text: "A redacted destination diff and final Apply confirmation follow."
+      color: Qt.alpha(root.foreground, 0.7)
+      font.family: Style.font.family
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.WordWrap
+    }
+    RowLayout {
+      Layout.fillWidth: true
+      Item { Layout.fillWidth: true }
+      Button {
+        text: root.preview && root.preview.canApply ? "Copy to " + String(root.preview.targetName || "target") : "Copy unavailable"
+        enabled: !!(root.preview && root.preview.canApply)
+        focusable: true
+        onClicked: root.copyRequested()
+      }
     }
   }
 }

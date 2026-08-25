@@ -1,7 +1,6 @@
-# Marketplace submission draft
+# Marketplace submission record
 
-This is an owner-reviewable draft. Do not create the issue or publish from an
-agent without explicit approval.
+The owner submitted [marketplace issue #2315](https://github.com/HANCORE-linux/omarchy-plugin-marketplace/issues/2315).
 
 ## Candidate metadata
 
@@ -28,11 +27,12 @@ atomic replacement, bounded backups, readback verification, and drift refusal.
 Unsupported or malformed sources remain visible with explicit read-only
 diagnostics.
 
-Version 1.0.7 was exercised in the real Omarchy 4.0.0-1 shell on Hyprland
+Version 1.1.0 was exercised in the real Omarchy 4.0.0-1 shell on Hyprland
 workspace 3. The live scan displayed 10 configured agents and 12 redacted MCP
 servers; the MCP bar mark, section hierarchy, reversible static-diagnostic
-ignores, keyboard agent navigation, and OpenCode server selection were verified
-without applying an agent-configuration mutation.
+ignores, keyboard agent navigation, OpenCode server selection, and the
+Codex-to-Antigravity copy planning flow were verified without applying an
+agent-configuration mutation.
 
 ## Owner checklist
 
