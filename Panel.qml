@@ -374,7 +374,7 @@ Panel {
           }
 
           ComparisonMatrix { visible: root.compareOpen; comparison: backend.comparison; foreground: root.foreground; onClosed: root.compareOpen = false }
-          DiagnosticsSheet { visible: root.diagnosticsOpen; data: backend.data; foreground: root.foreground; onClosed: root.diagnosticsOpen = false }
+          DiagnosticsSheet { visible: root.diagnosticsOpen; scanData: backend.data; foreground: root.foreground; onClosed: root.diagnosticsOpen = false }
           ConversionPreview { visible: root.conversionOpen && !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: { root.conversionOpen = false; backend.conversionPreview = null } }
           HistorySheet {
             visible: root.historyOpen

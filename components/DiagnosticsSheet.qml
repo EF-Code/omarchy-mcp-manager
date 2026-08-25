@@ -6,9 +6,9 @@ import "../McpModel.js" as Model
 
 Rectangle {
   id: root
-  property var data: null
+  property var scanData: null
   property color foreground: Color.foreground
-  readonly property var entries: Model.diagnosticEntries(data)
+  readonly property var entries: Model.diagnosticEntries(scanData)
   signal closed()
   Layout.fillWidth: true
   implicitHeight: content.implicitHeight + Style.space(18)
