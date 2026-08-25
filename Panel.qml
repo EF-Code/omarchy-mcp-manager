@@ -373,22 +373,6 @@ Panel {
             }
           }
 
-          ComparisonMatrix { visible: root.compareOpen; comparison: backend.comparison; foreground: root.foreground; onClosed: root.compareOpen = false }
-          DiagnosticsSheet { visible: root.diagnosticsOpen; scanData: backend.data; foreground: root.foreground; onClosed: root.diagnosticsOpen = false }
-          ConversionPreview { visible: root.conversionOpen && !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: { root.conversionOpen = false; backend.conversionPreview = null } }
-          HistorySheet {
-            visible: root.historyOpen
-            entries: backend.historyEntries
-            sourceId: root.selectedSource ? String(root.selectedSource.sourceId) : ""
-            foreground: root.foreground
-            onClosed: root.historyOpen = false
-            onRestoreRequested: function(backupId, sourceId) {
-              root.historyOpen = false
-              root.pendingAction = "restore"
-              backend.requestRestore(backupId, sourceId)
-            }
-          }
-
           RowLayout {
             Layout.fillWidth: true
             TextField {
@@ -415,6 +399,23 @@ Panel {
             Button { text: "Refresh"; focusable: true; onClicked: root.refresh() }
             Button { text: "Copy to: " + root.conversionTargetName; tooltipText: "Destination agent; click to choose the next available destination"; focusable: true; enabled: root.conversionTargets.length > 0; onClicked: root.cycleConversionTarget() }
             Button { text: "Preview copy"; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource && root.conversionTargets.length > 0; onClicked: root.showConversionPreview() }
+          }
+
+          ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.registerImport(path, adapter, mode) }; onCancelled: root.importOpen = false }
+          ComparisonMatrix { visible: root.compareOpen; comparison: backend.comparison; foreground: root.foreground; onClosed: root.compareOpen = false }
+          DiagnosticsSheet { visible: root.diagnosticsOpen; scanData: backend.data; foreground: root.foreground; onClosed: root.diagnosticsOpen = false }
+          ConversionPreview { visible: root.conversionOpen && !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: { root.conversionOpen = false; backend.conversionPreview = null } }
+          HistorySheet {
+            visible: root.historyOpen
+            entries: backend.historyEntries
+            sourceId: root.selectedSource ? String(root.selectedSource.sourceId) : ""
+            foreground: root.foreground
+            onClosed: root.historyOpen = false
+            onRestoreRequested: function(backupId, sourceId) {
+              root.historyOpen = false
+              root.pendingAction = "restore"
+              backend.requestRestore(backupId, sourceId)
+            }
           }
 
           SectionDivider { label: "AGENTS & SOURCES"; foreground: root.foreground }
@@ -569,8 +570,6 @@ Panel {
           ServerDetails { visible: !!root.selectedServer && !root.editorOpen && !root.importOpen; server: root.selectedServer; foreground: root.foreground }
 
           ServerEditor { visible: root.editorOpen; server: root.editingServer; sourceId: root.selectedSource ? String(root.selectedSource.sourceId) : ""; foreground: root.foreground; onSaveRequested: root.editorSave(value); onCancelled: root.editorOpen = false }
-
-          ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.registerImport(path, adapter, mode) }; onCancelled: root.importOpen = false }
 
         }
       }
