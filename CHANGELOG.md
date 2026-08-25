@@ -2,6 +2,15 @@
 
 All notable changes to MCP Manager are documented here.
 
+## [1.0.3] - 2026-08-25
+
+- Replaced the generic server glyph with the recognizable Model Context
+  Protocol mark in the top bar.
+- Fixed server-row pointer selection so details and contextual actions follow
+  the server that was clicked instead of remaining on the first server.
+- Added clear section dividers, a navigation boundary, and bordered server
+  cards to make the panel hierarchy easier to scan.
+
 ## [1.0.2] - 2026-08-25
 
 - Restored discovery of user-owned MCP files with broad permissions while

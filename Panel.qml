@@ -97,6 +97,11 @@ Panel {
     selectedServerIndex = 0
   }
 
+  function selectServer(index) {
+    selectedServerIndex = Model.clampedIndex(index, servers.length)
+    keyCatcher.forceActiveFocus()
+  }
+
   function moveCursor(dx, dy) {
     if (dx !== 0) {
       selectAgent(selectedAgentIndex + dx)
@@ -349,6 +354,8 @@ Panel {
             Button { text: "Copy preview"; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource && root.conversionTargets.length > 0; onClicked: backend.convertPreview(String(root.selectedSource.sourceId), String(root.selectedServer.name), root.conversionTarget) }
           }
 
+          SectionDivider { label: "AGENTS & SOURCES"; foreground: root.foreground }
+
           Loader {
             Layout.fillWidth: true
             active: root.helpOpen
@@ -394,6 +401,12 @@ Panel {
                 selectedIndex: root.selectedAgentIndex
                 foreground: root.foreground
                 onSelected: function(index) { root.selectAgent(index) }
+              }
+              Rectangle {
+                Layout.preferredWidth: 1
+                Layout.fillHeight: true
+                Layout.minimumHeight: Style.space(140)
+                color: Qt.alpha(root.foreground, 0.16)
               }
               ColumnLayout {
                 Layout.fillWidth: true
@@ -463,6 +476,8 @@ Panel {
             DiagnosticBadge { label: root.selectedSource ? Model.badgeForSource(root.selectedSource) : "No source"; severity: root.selectedSource && root.selectedSource.status === "malformed" ? "error" : "info"; foreground: root.foreground }
           }
 
+          SectionDivider { label: "MCP SERVERS"; foreground: root.foreground }
+
           Flow {
             id: sourceActions
             Layout.fillWidth: true
@@ -482,11 +497,12 @@ Panel {
             visible: !root.editorOpen && !root.importOpen
             Repeater {
               model: root.servers
-              ServerRow { required property var modelData; required property int index; server: modelData; selected: index === root.selectedServerIndex; foreground: root.foreground; onEditRequested: root.prepareEdit(); onToggleRequested: root.prepareToggle(); onRemoveRequested: root.prepareRemove() }
+              ServerRow { required property var modelData; required property int index; server: modelData; selected: index === root.selectedServerIndex; foreground: root.foreground; onChosen: root.selectServer(index) }
             }
             EmptyState { visible: root.servers.length === 0; title: root.selectedSource ? "No servers in this source" : "No source selected"; description: root.selectedSource ? "Add a server when this source is writable, or import an explicit JSON, JSONC, or Codex TOML file." : "Select an agent and source to inspect its MCP definitions."; foreground: root.foreground }
           }
 
+          SectionDivider { visible: !!root.selectedServer && !root.editorOpen && !root.importOpen; label: "SELECTED SERVER"; foreground: root.foreground }
           ServerDetails { visible: !!root.selectedServer && !root.editorOpen && !root.importOpen; server: root.selectedServer; foreground: root.foreground }
 
           ServerEditor { visible: root.editorOpen; server: root.editingServer; sourceId: root.selectedSource ? String(root.selectedSource.sourceId) : ""; foreground: root.foreground; onSaveRequested: root.editorSave(value); onCancelled: root.editorOpen = false }

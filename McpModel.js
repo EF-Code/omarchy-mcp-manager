@@ -69,6 +69,11 @@ function nextIndex(index, delta, length) {
   return wrapIndex(Number(index) + Number(delta), length)
 }
 
+function clampedIndex(index, length) {
+  if (!(length > 0)) return -1
+  return Math.max(0, Math.min(Number(index), length - 1))
+}
+
 function responsiveMode(vertical, width, height, scale) {
   if (vertical || Number(width) < 720 || Number(height) < 420) return "compact"
   if (Number(scale) >= 1.45) return "stacked"
@@ -158,7 +163,7 @@ function historyForSource(entries, sourceId) {
 if (typeof module !== "undefined") {
   module.exports = {
     parseResponse, agentsFrom, sourcesFrom, serversFrom, diagnosticCount,
-    serverCount, wrapIndex, nextIndex, responsiveMode, badgeForSource,
+    serverCount, wrapIndex, nextIndex, clampedIndex, responsiveMode, badgeForSource,
     badgeForAgent, diffLines, summary, keyHelp, duplicatePayload,
     writableAgentIds, historyForSource
   }
