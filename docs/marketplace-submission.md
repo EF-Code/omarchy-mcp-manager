@@ -28,7 +28,7 @@ atomic replacement, bounded backups, readback verification, and drift refusal.
 Unsupported or malformed sources remain visible with explicit read-only
 diagnostics.
 
-Version 1.0.3 was exercised in the real Omarchy 4.0.0-1 shell on Hyprland
+Version 1.0.4 was exercised in the real Omarchy 4.0.0-1 shell on Hyprland
 workspace 3. The live scan displayed 10 configured agents and 12 redacted MCP
 servers; the MCP bar mark, section hierarchy, keyboard agent navigation, and
 OpenCode server selection were verified without applying a mutation.
