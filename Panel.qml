@@ -41,6 +41,7 @@ Panel {
   readonly property var selectedServer: servers.length > 0 && selectedServerIndex >= 0 && selectedServerIndex < servers.length ? servers[selectedServerIndex] : null
   readonly property string mode: Model.responsiveMode(!!(bar && bar.vertical), panel.screenW, panel.screenH, Style.fontScale)
   readonly property var conversionTargets: Model.writableAgentIds(agents, selectedAgent ? String(selectedAgent.id) : "")
+  readonly property string conversionTargetName: Model.agentNameById(agents, conversionTarget)
 
   function chooseUsefulSource() {
     if (sources.length === 0) return
@@ -350,8 +351,8 @@ Panel {
             Button { text: "Doctor"; focusable: true; onClicked: backend.run(["doctor"], "doctor") }
             Button { text: "History"; focusable: true; enabled: !!root.selectedSource; onClicked: { root.historyOpen = true; backend.loadHistory() } }
             Button { text: "Refresh"; focusable: true; onClicked: root.refresh() }
-            Button { text: "Target: " + root.conversionTarget; focusable: true; onClicked: root.cycleConversionTarget() }
-            Button { text: "Copy preview"; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource && root.conversionTargets.length > 0; onClicked: backend.convertPreview(String(root.selectedSource.sourceId), String(root.selectedServer.name), root.conversionTarget) }
+            Button { text: "Copy to: " + root.conversionTargetName; tooltipText: "Destination agent; click to choose the next available destination"; focusable: true; enabled: root.conversionTargets.length > 0; onClicked: root.cycleConversionTarget() }
+            Button { text: "Preview copy"; focusable: true; enabled: !!root.selectedServer && !!root.selectedSource && root.conversionTargets.length > 0; onClicked: backend.convertPreview(String(root.selectedSource.sourceId), String(root.selectedServer.name), root.conversionTarget) }
           }
 
           SectionDivider { label: "AGENTS & SOURCES"; foreground: root.foreground }

@@ -34,5 +34,7 @@ assert.deepStrictEqual(model.writableAgentIds([
   { id: 'gemini', support: 'read-write', sources: [{ writable: true }] },
   { id: 'pi', support: 'read-only', sources: [{ writable: false }] }
 ], 'codex'), ['gemini']);
+assert.strictEqual(model.agentNameById(data.agents, 'gemini'), 'Gemini CLI');
+assert.strictEqual(model.agentNameById(data.agents, 'missing'), 'missing');
 assert.deepStrictEqual(model.historyForSource([{ sourceId: 's1', action: 'old' }, { sourceId: 's2' }, { sourceId: 's1', action: 'new' }], 's1').map(item => item.action), ['new', 'old']);
 console.log('model tests passed');

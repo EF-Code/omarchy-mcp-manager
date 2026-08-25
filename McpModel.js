@@ -152,6 +152,14 @@ function writableAgentIds(agents, currentId) {
   }).map(function(agent) { return String(agent.id) })
 }
 
+function agentNameById(agents, id) {
+  var wanted = String(id || "")
+  var match = (Array.isArray(agents) ? agents : []).find(function(agent) {
+    return agent && String(agent.id || "") === wanted
+  })
+  return match ? String(match.name || match.id || wanted) : wanted
+}
+
 function historyForSource(entries, sourceId) {
   return (Array.isArray(entries) ? entries : []).filter(function(entry) {
     return entry && String(entry.sourceId || "") === String(sourceId || "")
@@ -165,6 +173,6 @@ if (typeof module !== "undefined") {
     parseResponse, agentsFrom, sourcesFrom, serversFrom, diagnosticCount,
     serverCount, wrapIndex, nextIndex, clampedIndex, responsiveMode, badgeForSource,
     badgeForAgent, diffLines, summary, keyHelp, duplicatePayload,
-    writableAgentIds, historyForSource
+    writableAgentIds, agentNameById, historyForSource
   }
 }

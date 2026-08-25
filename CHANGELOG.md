@@ -2,6 +2,11 @@
 
 All notable changes to MCP Manager are documented here.
 
+## [1.0.4] - 2026-08-25
+
+- Clarified cross-agent copying by labeling the selector as the copy
+  destination and showing the destination agent's display name.
+
 ## [1.0.3] - 2026-08-25
 
 - Replaced the generic server glyph with the recognizable Model Context
