@@ -285,6 +285,27 @@ Panel {
 
           StatusBanner { Layout.fillWidth: true; message: backend.statusMessage; warning: backend.statusWarning; foreground: root.foreground }
 
+          ConfirmSheet {
+            visible: !!backend.pendingPlan
+            preview: backend.pendingPlan ? backend.pendingPlan.preview : null
+            title: root.pendingAction === "remove-server" ? "Remove server?" : root.pendingAction === "restore" ? "Restore this backup?" : "Apply MCP change?"
+            foreground: root.foreground
+            onCancelled: backend.pendingPlan = null
+            onConfirmed: backend.applyPending()
+          }
+          ConfirmSheet {
+            visible: root.pendingForgetSourceId !== ""
+            preview: ({ textDiff: [], warnings: ["This removes only MCP Manager's import registration. The imported file is not changed."] })
+            title: "Forget this import?"
+            foreground: root.foreground
+            onCancelled: root.pendingForgetSourceId = ""
+            onConfirmed: {
+              var sourceId = root.pendingForgetSourceId
+              root.pendingForgetSourceId = ""
+              backend.forgetImport(sourceId)
+            }
+          }
+
           ComparisonMatrix { visible: root.compareOpen; comparison: backend.comparison; foreground: root.foreground; onClosed: root.compareOpen = false }
           ConversionPreview { visible: !!backend.conversionPreview; preview: backend.conversionPreview; foreground: root.foreground; onClosed: backend.conversionPreview = null }
           HistorySheet {
@@ -472,26 +493,6 @@ Panel {
 
           ImportSheet { visible: root.importOpen; foreground: root.foreground; onRegisterRequested: function(path, adapter, mode) { root.importOpen = false; backend.registerImport(path, adapter, mode) }; onCancelled: root.importOpen = false }
 
-          ConfirmSheet {
-            visible: !!backend.pendingPlan
-            preview: backend.pendingPlan ? backend.pendingPlan.preview : null
-            title: root.pendingAction === "remove-server" ? "Remove server?" : root.pendingAction === "restore" ? "Restore this backup?" : "Apply MCP change?"
-            foreground: root.foreground
-            onCancelled: backend.pendingPlan = null
-            onConfirmed: backend.applyPending()
-          }
-          ConfirmSheet {
-            visible: root.pendingForgetSourceId !== ""
-            preview: ({ textDiff: [], warnings: ["This removes only MCP Manager's import registration. The imported file is not changed."] })
-            title: "Forget this import?"
-            foreground: root.foreground
-            onCancelled: root.pendingForgetSourceId = ""
-            onConfirmed: {
-              var sourceId = root.pendingForgetSourceId
-              root.pendingForgetSourceId = ""
-              backend.forgetImport(sourceId)
-            }
-          }
         }
       }
     }
